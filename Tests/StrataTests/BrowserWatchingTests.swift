@@ -1,3 +1,4 @@
+import AppKit
 import CoreServices
 import Foundation
 import Synchronization
@@ -95,7 +96,7 @@ import StrataIndex
         #expect(tree.snapshot() == ["folder/"])
     }
 
-    @Test func aFileListedDifferentlyRereadsTheFolderUnlessAReadIsUnderWay() async throws {
+    @Test func aFileListedDifferentlyRereadsTheFolderAfterTheCurrentRead() async throws {
         let tree = try TestTree("folder/")
         let movie = tree.url("folder/movie.mp4")
         let small = file(movie, size: 48), large = file(movie, size: 8240)
@@ -107,13 +108,10 @@ import StrataIndex
         browser.load(tree.url("folder"))
         let opening = try #require(browser.directoryReads.task)
         let first = try await reads.request(0)
-        // While a read is under way it isn't replaced: it reads the file anew.
-        browser.refreshChangedFiles([large])
+        browser.refreshChangedFiles([small])
         #expect(browser.directoryReads.task == opening && !opening.isCancelled)
         first.finish(.success([small]))
         await opening.value
-        // Not listed (made meanwhile: the directory watchers have it), or listed as it is: nothing to read.
-        browser.refreshChangedFiles([file(tree.url("folder/new.mp4"), size: 1), small])
         #expect(reads.requests.count == 1 && browser.directoryReads.task == nil)
 
         browser.refresh()
@@ -123,7 +121,7 @@ import StrataIndex
         try await reads.request(1).finish(.success([small]))
         await underWay.value
 
-        browser.refreshChangedFiles([large])
+        // A single event survives the stale read and starts exactly one repair.
         let rereading = try #require(browser.directoryReads.task)
         try await reads.request(2).finish(.success([large]))
         await rereading.value
@@ -132,7 +130,7 @@ import StrataIndex
         #expect(tree.snapshot() == ["folder/"])
     }
 
-    @Test func aColumnRereadsAFileListedDifferentlyUnlessAReadIsUnderWay() async throws {
+    @Test func aColumnRereadsAFileListedDifferentlyAfterTheCurrentRead() async throws {
         let environment = try IndependentEnvironment()
         let tree = try TestTree("folder/")
         let movie = tree.url("folder/movie.mp4")
@@ -148,11 +146,10 @@ import StrataIndex
         pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let opening = try #require(pane.directoryReads.task)
         let first = try await reads.request(0)
-        pane.reloadChangedFiles([large])
+        pane.reloadChangedFiles([small])
         #expect(pane.directoryReads.task == opening && !opening.isCancelled)
         first.finish(.success([small]))
         await opening.value
-        pane.reloadChangedFiles([small])
         #expect(reads.requests.count == 1 && pane.directoryReads.task == nil)
 
         pane.reload()
@@ -162,12 +159,24 @@ import StrataIndex
         try await reads.request(1).finish(.success([small]))
         await underWay.value
 
-        pane.reloadChangedFiles([large])
+        // A single event survives the stale read and starts exactly one repair.
         let rereading = try #require(pane.directoryReads.task)
         try await reads.request(2).finish(.success([large]))
         await rereading.value
         #expect(pane.entries.map(\.size) == [8240])
         #expect(reads.requests.count == 3)
+
+        // Ending an inline edit during a newer read must not restore the older held snapshot.
+        let field = InlineRenameField(name: small.name, isFolder: false, centered: false, font: .systemFont(ofSize: 13))
+        pane.tableView.addSubview(field)
+        pane.setEntries([small], matches: [:])
+        pane.reload()
+        let replacement = try #require(pane.directoryReads.task)
+        field.removeFromSuperview()
+        pane.applyDeferred()
+        #expect(pane.entries.map(\.size) == [8240])
+        try await reads.request(3).finish(.success([large]))
+        await replacement.value
         #expect(tree.snapshot() == ["folder/"])
     }
 
@@ -211,6 +220,40 @@ import StrataIndex
         #expect(changes.withLock { $0 } > 0)
         withExtendedLifetime(watching) {}
         #expect(tree.snapshot() == ["folder/", "folder/new.txt"])
+    }
+
+    @Test func closingDuringDirectorySetupNeverStartsTheFileStream() async throws {
+        let gate = PreviewReadGate<[DirectoryWatcher]>()
+        let starts = Mutex(0)
+        var watch: ListingWatch? = ListingWatch([URL(filePath: "/tmp")], startStream: { _, _ in
+            starts.withLock { $0 += 1 }; return true
+        }, openDirectories: { _, _ in (try? await gate.read()) ?? [] }, changed: {})
+        let ready = try #require(watch?.ready)
+        await gate.waitUntilStarted()
+        watch = nil
+        await gate.waitUntilCancelled()
+        gate.finish(.success([]))
+        await ready.value
+        #expect(starts.withLock { $0 } == 0)
+    }
+
+    @Test(arguments: [true, false], [true, false]) func missingNativeCoveragePollsOnlyWhileOwned(streamStarts: Bool, directoryOpens: Bool) async throws {
+        let ticks = AsyncStream<Void>.makeStream()
+        let polls = Mutex(0)
+        var watch: ListingWatch? = ListingWatch([URL(filePath: "/tmp")], startStream: { _, _ in streamStarts },
+            openDirectories: { urls, changed in directoryOpens ? await DirectoryWatcher.watching(urls, onChange: changed) : [] }, waitForPoll: {
+                var iterator = ticks.stream.makeAsyncIterator()
+                guard await iterator.next() != nil else { throw CancellationError() }
+            }, changed: {}, poll: { polls.withLock { $0 += 1 } }, hasUnwatchedChildren: { streamStarts && directoryOpens })
+        await watch?.ready.value
+        ticks.continuation.yield(())
+        for _ in 0..<200 where polls.withLock({ $0 }) == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(polls.withLock { $0 } == 1)
+        watch = nil
+        ticks.continuation.yield(())
+        ticks.continuation.finish()
+        await Task.yield()
+        #expect(polls.withLock { $0 } == 1)
     }
 
     @Test func aRepositoryFoundAfterThePaneMovedOnOrStoppedIsDropped() async throws {

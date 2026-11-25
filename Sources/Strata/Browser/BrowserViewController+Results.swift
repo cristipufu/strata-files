@@ -123,6 +123,8 @@ extension BrowserViewController {
 
     private func enterResults() {
         if !isShowingResults {
+            watching.stop()
+            expandedNodes.removeAllObjects()
             cancelPendingActions()
             inlineRename.dropHeldListing()
             results.enter(iconSize: iconSize)

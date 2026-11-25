@@ -18,6 +18,7 @@ import AppKit
     private(set) weak var field: NSTextField?
     /// The folder read again while a name was being edited in place: shown once the edit ends.
     private var held: HeldListing?
+    var hasHeldListing: Bool { held != nil }
 
     /// Whether a name in the list is being edited right now.
     var isEditing: Bool { node != nil && field?.currentEditor() != nil }

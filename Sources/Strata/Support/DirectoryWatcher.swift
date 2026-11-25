@@ -10,7 +10,7 @@ package nonisolated final class DirectoryWatcher: Sendable {
     /// made after this returns is caught. One dropped stops watching and closes its folder.
     package static func watching(_ urls: [URL], onChange: @escaping @MainActor @Sendable () -> Void) async -> [DirectoryWatcher] {
         let paths = urls.map(\.path)
-        return await OwnThread.run { paths.compactMap { DirectoryWatcher(path: $0, onChange: onChange) } }
+        return await OwnThread.runUnlessCancelled { paths.compactMap { DirectoryWatcher(path: $0, onChange: onChange) } } ?? []
     }
 
     private init?(path: String, onChange: @escaping @MainActor @Sendable () -> Void) {

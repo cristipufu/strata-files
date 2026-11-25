@@ -2,6 +2,7 @@ import AppKit
 
 extension Notification.Name {
     package static let alternatingRowsChanged = Notification.Name("StrataAlternatingRowsChanged")
+    package static let cloudRootCrumbsChanged = Notification.Name("StrataCloudRootCrumbsChanged")
     package static let listNamesChanged = Notification.Name("StrataListNamesChanged")
     package static let prefsChanged = Notification.Name("StrataPrefsChanged")
     /// Theme, density or text size changed (Settings ▸ Appearance): views restyle, nothing reloads.
@@ -358,7 +359,11 @@ package final class Prefs: PreviewTextSettings {
     /// CloudStorage.
     package var cloudRootCrumbs: Bool {
         get { defaults.object(forKey: Key.cloudRootCrumbs) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Key.cloudRootCrumbs); notifications.post(name: .appearanceChanged, object: nil) }
+        set {
+            guard cloudRootCrumbs != newValue else { return }
+            defaults.set(newValue, forKey: Key.cloudRootCrumbs)
+            notifications.post(name: .cloudRootCrumbsChanged, object: self)
+        }
     }
 
     /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).

@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataModel
@@ -74,13 +75,14 @@ import Testing
         bar.url = Places.home.appending(path: "Library/CloudStorage/Dropbox/DIY MYOG", directoryHint: .isDirectory)
         #expect(bar.crumbButtons.map(\.cloud) == [.dropbox, nil])
 
-        var announced = 0
-        let observer = preferences.notifications.addObserver(forName: .appearanceChanged, object: nil, queue: nil) { _ in
-            announced += 1
+        let announced = Mutex(0)
+        let observer = preferences.notifications.addObserver(forName: .cloudRootCrumbsChanged, object: preferences, queue: nil) { _ in
+            announced.withLock { $0 += 1 }
         }
         defer { preferences.notifications.removeObserver(observer) }
         preferences.cloudRootCrumbs = false
-        #expect(announced == 1)
+        preferences.cloudRootCrumbs = false
+        #expect(announced.withLock { $0 } == 1)
         #expect(!preferences.cloudRootCrumbs)
         #expect(bar.crumbButtons.count == 5 && bar.crumbButtons.allSatisfy { $0.cloud == nil })
         preferences.cloudRootCrumbs = true

@@ -9044,7 +9044,7 @@
   },
   {
     "file": "Strata/Views/ColumnPane.swift",
-    "find": "(entries.filter { rowByKey[$0.url.fileViewKey] == nil }, folder, wasLoaded)",
+    "find": "(entries.filter { rowByKey[$0.locationKey] == nil }, folder, wasLoaded)",
     "replace": "(entries, folder, wasLoaded)",
     "rule": "Progressive metadata deeper columns reread earlier batches",
     "tests": "ProgressiveDirectoryTests/deeperColumnsPublishBatchesWithoutLosingTheirOwnSelection"

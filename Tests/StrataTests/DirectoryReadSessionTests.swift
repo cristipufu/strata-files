@@ -62,6 +62,30 @@ struct DirectoryReadSessionTests {
         #expect(tree.snapshot() == ["a/", "b/"])
     }
 
+    @Test func collapsingAnExpandedFolderDiscardsItsPendingRead() async throws {
+        let tree = try TestTree("folder/child")
+        let reads = Reads()
+        defer { reads.stop() }
+        let browser = browser(reads)
+        defer { browser.stopBackgroundWork() }
+        browser.load(tree.root)
+        let root = try #require(browser.directoryReads.task)
+        let folder = try #require(FileEntry(url: tree.url("folder")))
+        try await reads.request(0).finish(.success([folder]))
+        await root.value
+        let node = try #require(browser.node(for: folder.url))
+        browser.outlineView.expandItem(node)
+        let pending = try await reads.request(1)
+        let read = browser.loading.loadChildren(of: node, showHidden: false, applications: .standard) { _ in
+            Issue.record("The expansion should already own this read")
+        }
+        browser.outlineView.collapseItem(node)
+        #expect(read.isCancelled && !browser.expandedWatches.contains(folder.url))
+        pending.finish(.success([try #require(FileEntry(url: tree.url("folder/child")))]))
+        await read.value
+        #expect(node.children == nil && browser.outlineView.numberOfRows == 1)
+    }
+
     @Test func nativeExpandedRowsKeepTheirCurrentReadAfterAnOlderResponse() async throws {
         let tree = try TestTree("folder/old.txt", "folder/new.txt")
         let reads = Reads()
@@ -97,6 +121,16 @@ struct DirectoryReadSessionTests {
         #expect((browser.outlineView.item(atRow: 1) as? FileNode)?.entry == entry)
         browser.select([entry.url])
         #expect(browser.selectedURLs == [entry.url])
+        browser.refresh()
+        let again = try #require(browser.directoryReads.task)
+        try await reads.request(for: tree.root).finish(.success([folder]))
+        await again.value
+        let pending = try await reads.request(for: folder.url)
+        let read = browser.loading.loadChildren(of: node, showHidden: false, applications: .standard) { _ in }
+        browser.select([])
+        pending.finish(.success([entry]))
+        await read.value
+        #expect(browser.selectedURLs.isEmpty)
         #expect(tree.snapshot() == ["folder/", "folder/new.txt", "folder/old.txt"])
     }
 

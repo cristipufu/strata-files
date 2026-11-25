@@ -43,7 +43,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabs.addTabViewItem(pane(.general, "gearshape", GeneralSettings()))
         tabs.addTabViewItem(pane(.search, "magnifyingglass", IndexSettings()))
         tabs.addTabViewItem(pane(.terminal, "terminal", TerminalSettings()))
-        tabs.addTabViewItem(pane(.appearance, "paintbrush", AppearanceSettings(themes: themeChoices)))
+        tabs.addTabViewItem(pane(.appearance, "paintbrush", AppearanceSettings(themes: themeChoices, preferences: preferences)))
         tabs.addTabViewItem(pane(.tags, "tag", TagSettings(editing: TagEditing(management: tagManagement))))
         tabs.addTabViewItem(pane(.shortcuts, "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)

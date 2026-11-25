@@ -130,6 +130,7 @@ extension BrowserViewController {
         cancelPendingActions()
         filtering.cancel()
         resorting.cancel()
+        expandedWatches.removeAll()
         watching.stop()
         loading.invalidate()
         sizer.cancelPending()

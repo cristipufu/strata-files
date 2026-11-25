@@ -11,10 +11,19 @@ nonisolated final class ListingWatch: Sendable {
     let ready: Task<Void, Never>
     private let changes: LatestUpdate<Void>
     private let edits: LatestUpdate<Void>
-    private let opened: Task<[DirectoryWatcher], Never>
+    private struct Sources: Sendable {
+        let directories: [DirectoryWatcher]
+        let needsPolling: Bool
+    }
+
+    private let opened: Task<Sources?, Never>
+    private let fallback: Task<Void, Never>
+    private static let pollInterval: Duration = .seconds(30)
     private let stream = FSEventsStream()
 
     typealias StartStream = @Sendable (FSEventsStream, [String]) -> Bool
+
+    typealias OpenDirectories = @Sendable ([URL], @escaping @MainActor @Sendable () -> Void) async -> [DirectoryWatcher]
 
     enum Effect: Equatable {
         case none
@@ -25,7 +34,11 @@ nonisolated final class ListingWatch: Sendable {
     }
 
     init(_ folders: [URL], startStream: @escaping StartStream = { $0.start(paths: $1, since: nil, latency: 1) },
+         openDirectories: @escaping OpenDirectories = DirectoryWatcher.watching,
+         waitForPoll: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: ListingWatch.pollInterval) },
          changed: @escaping @MainActor @Sendable () -> Void,
+         poll: (@MainActor @Sendable () -> Void)? = nil,
+         hasUnwatchedChildren: (@MainActor @Sendable () -> Bool)? = nil,
          filesChanged: @escaping @MainActor @Sendable ([FileEntry]) -> Void = { _ in }) {
         let schedule: LatestUpdate<Void>.Schedule = { DispatchQueue.main.async(execute: $0) }
         let changes = LatestUpdate<Void>(schedule: schedule) { changed() }
@@ -36,31 +49,45 @@ nonisolated final class ListingWatch: Sendable {
         }
         self.changes = changes
         self.edits = edits
-        let opened = Task.detached { [stream] () -> [DirectoryWatcher] in
-            guard !folders.isEmpty else { return [] }
-            let watchers = await DirectoryWatcher.watching(folders) { changes.send(()) }
-            await OwnThread.run {
-                let roots = Set(folders.map { PathSpelling.system($0.resolvingSymlinksInPath().path) })
-                stream.handler = { events in
-                    var paths: [String] = []
-                    for event in events {
-                        switch Self.effect(of: event, roots: roots) {
-                        case .reread: changes.send(()); return
-                        case .file(let path): paths.append(path)
-                        case .none: break
-                        }
-                    }
-                    let files = paths.compactMap { FileEntry(url: URL(fileURLWithPath: $0)) }
-                    guard !files.isEmpty else { return }
-                    edited.add(files)
-                    edits.send(())
-                }
-                _ = startStream(stream, Array(roots))
+        let opened = Task.detached { [stream] () -> Sources? in
+            guard !folders.isEmpty, !Task.isCancelled else { return nil }
+            let watchers = await openDirectories(folders) { changes.send(()) }
+            guard !Task.isCancelled, let paths = await OwnThread.runUnlessCancelled({
+                Set(folders.map { PathSpelling.system($0.resolvingSymlinksInPath().path) })
+            }), !Task.isCancelled else { return nil }
+            stream.handler = { events in
+                Self.deliver(events, roots: paths, changed: changes, edited: edited, notifyEdits: edits)
             }
-            return watchers
+            guard !Task.isCancelled else { return nil }
+            let started = startStream(stream, Array(paths))
+            return Sources(directories: watchers, needsPolling: !started || watchers.count < folders.count)
         }
         self.opened = opened
         ready = Task { _ = await opened.value }
+        fallback = Task { @MainActor in
+            guard let sources = await opened.value, sources.needsPolling || hasUnwatchedChildren != nil else { return }
+            while !Task.isCancelled {
+                do { try await waitForPoll() } catch { return }
+                guard !Task.isCancelled else { return }
+                if sources.needsPolling || hasUnwatchedChildren?() == true { (poll ?? changed)() }
+            }
+        }
+    }
+
+    private static func deliver(_ events: [FSEventsStream.Event], roots: Set<String>, changed: LatestUpdate<Void>,
+                                edited: EditedFiles, notifyEdits: LatestUpdate<Void>) {
+        var paths = Set<String>()
+        for event in events {
+            switch effect(of: event, roots: roots) {
+            case .reread: changed.send(()); return
+            case .file(let path): paths.insert(path)
+            case .none: break
+            }
+        }
+        let files = paths.compactMap { FileEntry(url: URL(filePath: $0, directoryHint: .notDirectory)) }
+        guard !files.isEmpty else { return }
+        edited.add(files)
+        notifyEdits.send(())
     }
 
     static func effect(of event: FSEventsStream.Event, roots: Set<String>) -> Effect {
@@ -86,6 +113,8 @@ nonisolated final class ListingWatch: Sendable {
     }
 
     deinit {
+        opened.cancel()
+        fallback.cancel()
         changes.cancel()
         edits.cancel()
         // Start and stop must never race; neither waits on the presentation's thread.

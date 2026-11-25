@@ -21,10 +21,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var renamingRow: Int?
     /// Opens the folder a drag rests on in the next column, by selecting it.
     lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
-        guard let self, let row = rowByKey[folder.fileViewKey] else { return nil }
+        guard let self, let row = rowByKey[PathSpelling.short(folder)] else { return nil }
         return tableView.rect(ofRow: row)
     }, open: { [weak self] folder, _ in
-        guard let self, let row = rowByKey[folder.fileViewKey] else { return }
+        guard let self, let row = rowByKey[PathSpelling.short(folder)] else { return }
         // Focusing the column makes its pane the active one in dual pane, like a click would.
         tableView.window?.makeFirstResponder(tableView)
         selectRow(row)
@@ -172,6 +172,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         directoryReads.invalidate()
         listingWatch = nil
         watchedFolder = nil
+        deferred = nil
     }
 
     // MARK: Loading
@@ -191,21 +192,22 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         watchedFolder = watched
         let directories = (controller?.applicationFolders ?? .standard).directories(for: watched)
         let watch = ListingWatch(directories, changed: { [weak self] in self?.reload() },
-                                 filesChanged: { [weak self] in self?.reloadChangedFiles($0) })
+                                 poll: { [weak self] in
+                                     guard let self, directoryReads.task == nil, renamingRow == nil else { return }
+                                     reload()
+                                 }, filesChanged: { [weak self] in self?.reloadChangedFiles($0) })
         listingWatch = watch
         return watch.ready
     }
 
-    /// `current`: files of this column's folder as they are now. One listed with another size or date reads the folder
-    /// again, unless a read is under way: that one reads them anew.
     func reloadChangedFiles(_ current: [FileEntry]) {
-        guard directoryReads.task == nil else { return }
-        let listed = Dictionary(entries.map { ($0.locationKey, $0) }, uniquingKeysWith: { first, _ in first })
-        guard current.contains(where: { ListingWatch.differs(listed[$0.locationKey], from: $0) }) else { return }
-        reload()
+        if directoryReads.needsReload(for: current, awaitingDisplay: deferred != nil, listed: { key in
+            rowByKey[key].map { entries[$0] }
+        }) { reload() }
     }
 
     func reload(after watched: Task<Void, Never>? = nil) {
+        deferred = nil
         listingFailed = false
         let gen = generation + 1
         let folder = folder
@@ -274,11 +276,12 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             deferred = DeferredEntries(entries: entries, matches: matches, partial: partial, metadata: metadata)
             return
         }
+        let appliedGeneration = generation
         let wasLoaded = isLoaded
         let metadataRead: (entries: [FileEntry], folder: URL, append: Bool)? = switch metadata {
         case .none: nil
         case .all(let folder): (entries, folder, false)
-        case .added(let folder): (entries.filter { rowByKey[$0.url.fileViewKey] == nil }, folder, wasLoaded)
+        case .added(let folder): (entries.filter { rowByKey[$0.locationKey] == nil }, folder, wasLoaded)
         }
         let before = selectedKeys
         let insertions = partial || hasPartialListing
@@ -294,7 +297,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         needsLayout = true
         self.matches = matches
         rowByKey.removeAll(keepingCapacity: true)
-        for (i, entry) in entries.enumerated() { rowByKey[entry.url.fileViewKey] = i }
+        for (i, entry) in entries.enumerated() { rowByKey[entry.locationKey] = i }
         isLoaded = true
         suppressSelection = true
         if let insertions { tableView.insertRows(at: insertions, withAnimation: []) }
@@ -310,20 +313,21 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
         if rows.count != before.count { controller?.selectionChanged(in: self, afterReload: true) }
         controller?.paneLoaded(self, firstLoad: !wasLoaded)
+        if !partial, generation == appliedGeneration { reloadChangedFiles([]) }
     }
 
     private var selectedKeys: [String] {
-        tableView.selectedRowIndexes.compactMap { $0 < entries.count ? entries[$0].url.fileViewKey : nil }
+        tableView.selectedRowIndexes.compactMap { $0 < entries.count ? entries[$0].locationKey : nil }
     }
 
     var selectedEntries: [FileEntry] {
         tableView.selectedRowIndexes.compactMap { $0 < entries.count ? entries[$0] : nil }
     }
 
-    func row(for url: URL) -> Int? { rowByKey[url.fileViewKey] }
+    func row(for url: URL) -> Int? { rowByKey[PathSpelling.short(url)] }
 
     func select(_ urls: [URL], scroll: Bool) {
-        let rows = IndexSet(urls.compactMap { rowByKey[$0.fileViewKey] })
+        let rows = IndexSet(urls.compactMap { rowByKey[PathSpelling.short($0)] })
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
         if scroll, let first = rows.first { tableView.scrollRowToVisible(first) }
     }

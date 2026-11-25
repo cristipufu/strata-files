@@ -85,7 +85,7 @@ struct TagSettings: View {
             Button {
                 if let entry { attempt { try catalog.favorite(entry.id, enabled: !entry.favorite) } }
             } label: { Image(systemName: entry?.favorite == true ? "star.fill" : "star") }
-                .buttonStyle(.borderless).disabled(entry == nil).help(String(localized: "Favorite Tags"))
+                .modifier(TagActionStyle()).disabled(entry == nil).help(String(localized: "Favorite Tags"))
         }.frame(height: Self.rowHeight)
             .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
     }
@@ -104,13 +104,13 @@ struct TagSettings: View {
                         .disabled(selected == nil).help(String(localized: "Move Up"))
                     Button { if let selected { catalog.move(selected.id, by: 1) } } label: { Image(systemName: "arrow.down") }
                         .disabled(selected == nil).help(String(localized: "Move Down"))
-                }.buttonStyle(.bordered)
+                }.modifier(TagActionStyle())
                 Text(String(localized: "Check tags to show them in the sidebar. Star up to seven favorites for file menus."))
                     .font(.callout).foregroundStyle(.secondary)
                 Toggle(String(localized: "Tint folders based on tags"), isOn: Binding(get: { catalog.tintFolders }, set: { catalog.setTintFolders($0) }))
             }.disabled(!editing.canEdit)
             if management.busy {
-                HStack { ProgressView().controlSize(.small); Button(String(localized: "Cancel")) { management.cancel() } }
+                HStack { ProgressView().controlSize(.small); Button(String(localized: "Cancel")) { management.cancel() } }.modifier(TagActionStyle())
             }
             if let review = management.review {
                 HStack {
@@ -127,18 +127,27 @@ struct TagSettings: View {
                 HStack {
                     Button(String(localized: "Cancel")) { management.cancel() }
                     Button(String(localized: "Apply")) { management.apply() }
-                }
+                }.modifier(TagActionStyle())
             }
             HStack {
                 Button(String(localized: "Undo")) { management.undoChange() }.disabled(management.busy || !management.undo.canUndo)
                 Spacer()
                 Button(String(localized: "Refresh")) { Task { [catalog] in await catalog.refresh() } }.disabled(!editing.canEdit)
-            }
+            }.modifier(TagActionStyle())
         }
         .formStyle(.grouped)
     }
 
     private func attempt(_ action: () throws -> Void) {
         do { try action() } catch { management.error = error.localizedDescription }
+    }
+}
+
+/// Grouped forms draw action text in the tint. Give the glyphs their own ink and keep the native disabled state.
+private struct TagActionStyle: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.buttonStyle(.borderless).tint(colorScheme == .dark ? .white : .black)
     }
 }

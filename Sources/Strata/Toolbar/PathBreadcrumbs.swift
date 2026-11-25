@@ -20,6 +20,7 @@ final class PathBreadcrumbs: NSView {
     private var steps: [Step] = []
     private struct Fitting {
         let visible: Set<Int>
+        let rootWidth: CGFloat
         let currentWidth: CGFloat
         let branch: Int?
     }
@@ -58,7 +59,9 @@ final class PathBreadcrumbs: NSView {
             setVisible(fitting.visible.contains(index), view: step.chevron)
             setVisible(fitting.branch == index, view: step.branch)
             guard fitting.visible.contains(index) else { continue }
-            let width = index == current ? fitting.currentWidth : step.button.intrinsicContentSize.width
+            let width = if index == current { fitting.currentWidth }
+                else if index == 0 { fitting.rootWidth }
+                else { step.button.intrinsicContentSize.width }
             place(step.button, width: width, at: &x)
             if fitting.branch == index, let pill = step.branch {
                 x += Self.branchSpacing
@@ -74,10 +77,18 @@ final class PathBreadcrumbs: NSView {
         var visible: Set<Int> = [current]
         var currentWidth = min(steps[current].width, available)
         var remaining = available - currentWidth
-        if current > 0, steps[0].width + min(steps[current].width, Self.minimumCurrentWidth) <= available {
+        let root = steps[0]
+        var rootWidth = root.button.intrinsicContentSize.width
+        let chevronWidth = root.chevron?.intrinsicContentSize.width ?? 0
+        let roomForRoot = available - min(steps[current].width, Self.minimumCurrentWidth) - chevronWidth
+        // A long account name can truncate while its icon, chevron and the current folder still fit.
+        if root.button.cloud != nil, roomForRoot >= CrumbButton.minimumCloudWidth {
+            rootWidth = min(rootWidth, roomForRoot)
+        }
+        if current > 0, rootWidth <= roomForRoot {
             visible.insert(0)
-            currentWidth = min(steps[current].width, available - steps[0].width)
-            remaining = available - steps[0].width - currentWidth
+            currentWidth = min(steps[current].width, available - rootWidth - chevronWidth)
+            remaining = available - rootWidth - chevronWidth - currentWidth
         }
         let parents = steps.indices.filter { !visible.contains($0) }.sorted {
             let leftRepository = steps[$0].branch != nil, rightRepository = steps[$1].branch != nil
@@ -90,7 +101,7 @@ final class PathBreadcrumbs: NSView {
         let branch = steps.indices.first {
             visible.contains($0) && steps[$0].branchWidth > 0 && steps[$0].branchWidth <= remaining
         }
-        return Fitting(visible: visible, currentWidth: currentWidth, branch: branch)
+        return Fitting(visible: visible, rootWidth: rootWidth, currentWidth: currentWidth, branch: branch)
     }
 
     private func place(_ view: NSView, width: CGFloat, at x: inout CGFloat) {

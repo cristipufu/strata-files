@@ -128,6 +128,8 @@ final class BrowserViewController: NSViewController {
     private(set) lazy var localCommands = LocalFileCommands(context: self, files: services.files)
 
     let watching = BrowserWatching()
+    private(set) lazy var expandedWatches = FolderWatchers(budget: services.expandedFolderBudget, directories: applicationFolders)
+    let expandedNodes = NSHashTable<FileNode>.weakObjects()
     private(set) lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
@@ -371,6 +373,8 @@ final class BrowserViewController: NSViewController {
             sizer.cancelPending()
             mediaInfo.cancelPending()
             // Watched before it's read, so no change made while it's read is missed.
+            expandedNodes.removeAllObjects()
+            expandedWatches.removeAll()
             watched = watch(url)
             pending.selection = select.map { [$0] } ?? []
         }
@@ -465,15 +469,20 @@ final class BrowserViewController: NSViewController {
     private func watch(_ folder: URL) -> Task<Void, Never> {
         watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
                        changed: { [weak self] in self?.refresh() },
+                       poll: { [weak self] in
+                           guard let self, directoryReads.task == nil, !inlineRename.isEditing else { return }
+                           refresh()
+                       },
+                       hasUnwatchedChildren: { [weak self] in self?.hasUnwatchedExpandedFolders == true },
                        filesChanged: { [weak self] in self?.refreshChangedFiles($0) },
                        isCurrent: { [weak self] in self?.directory == folder })
     }
 
-    /// `current`: files of the folder shown as they are now. One listed with another size or date reads the folder
-    /// again, unless a read is under way: that one reads them anew.
+    /// Reconcile file edits when the last complete listing is on screen.
     func refreshChangedFiles(_ current: [FileEntry]) {
-        guard directory != nil, !isShowingResults, directoryReads.task == nil,
-              current.contains(where: { ListingWatch.differs(listing.node(forKey: $0.locationKey)?.entry, from: $0) })
+        guard directory != nil, !isShowingResults,
+              directoryReads.needsReload(for: current, awaitingDisplay: inlineRename.hasHeldListing,
+                                         listed: { listing.node(forKey: $0)?.entry })
         else { return }
         refresh()
     }
@@ -496,7 +505,7 @@ final class BrowserViewController: NSViewController {
         initialMode = nil; initialSort = nil
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
         let selection = pending.selection ?? (preservingState ? selectedURLs : [])
-        let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
+        let expanded = preservingState ? visibleExpandedFolders : []
         let viewport = progressive && preservingState ? TableViewport.capture(outlineView) { ($0 as? FileNode)?.entry.locationKey } : nil
         let presorted = sortedBy != nil && sortedBy == ordering.snapshot
         let metadataEntries = progressive && preservingState
@@ -523,9 +532,11 @@ final class BrowserViewController: NSViewController {
         for node in expanded where self.node(for: node.url) === node {
             outlineView.expandItem(node)
             if !progressive || node.children == nil {
-                loadChildren(of: node, selecting: selection.filter { $0.path.hasPrefix(node.url.path + "/") })
+                let requested = pending.selection?.filter { $0.deletingLastPathComponent().fileViewKey == node.url.fileViewKey } ?? []
+                loadChildren(of: node, selecting: requested)
             }
         }
+        pruneExpandedWatches()
         // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
         pushContent(animated: preservingState)
@@ -545,25 +556,30 @@ final class BrowserViewController: NSViewController {
         if deferredFilter { filtering.refresh() }
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
+        if complete, generation == appliedGeneration { refreshChangedFiles([]) }
     }
 
-    func loadChildren(of node: FileNode, selecting: [URL] = []) {
-        loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
+    func loadChildren(of node: FileNode, selecting requested: [URL] = []) {
+        let watched = watchExpandedFolder(node)
+        loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders, after: watched) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
+            if inlineRename.isEditing {
+                // The root listing is held until editing ends; applying it rereads the expanded folders.
+                refresh()
+                return
+            }
             services.tags.load(entries)
             services.cloud.load(paths: entries.map(\.locationKey), in: node.url)
+            let selection = selectedURLs
+            // Reloading children can send native expansion and selection callbacks synchronously.
+            let wasApplying = isApplyingListing
+            isApplyingListing = true
+            defer { isApplyingListing = wasApplying }
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
-            if !selecting.isEmpty, activeView == nil {
-                let rows = IndexSet(selecting.compactMap { url in
-                    self.node(for: url).flatMap { row in
-                        let index = outlineView.row(forItem: row)
-                        return index >= 0 ? index : nil
-                    }
-                })
-                if !rows.isEmpty {
-                    outlineView.selectRowIndexes(rows, byExtendingSelection: !outlineView.selectedRowIndexes.isEmpty)
-                }
+            pruneExpandedWatches()
+            if activeView == nil {
+                select(selection.isEmpty ? requested : selection, scroll: false)
             }
             beginPendingRename()
         }
@@ -593,6 +609,8 @@ final class BrowserViewController: NSViewController {
         sizer.cancelPending()
         mediaInfo.cancelPending()
         inlineRename.dropHeldListing()
+        expandedNodes.removeAllObjects()
+        expandedWatches.removeAll()
         listing.clear()
         outlineView.reloadData()
         // Icons, Columns, Gallery and Disk Usage keep their own copy of the items: clear it too.
@@ -696,6 +714,10 @@ final class BrowserViewController: NSViewController {
         if !preservingSelection, let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
             outlineView.selectRowIndexes([firstRow], byExtendingSelection: false)
             outlineView.scrollRowToVisible(firstRow)
+        }
+        pruneExpandedWatches()
+        if text.isEmpty {
+            for node in visibleExpandedFolders where !expandedWatches.contains(node.url) { loadChildren(of: node) }
         }
         filterPill.update(query: text, matches: rows.count)
         pushContent()

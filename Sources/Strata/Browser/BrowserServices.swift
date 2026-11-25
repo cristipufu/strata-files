@@ -5,6 +5,7 @@ import StrataArchives
 /// preferences, transfers and visit history without changing AppKit's responder chain or presentation controllers.
 final class BrowserServices {
     static let shared = application()
+    let expandedFolderBudget = FolderWatchers.Budget()
 
     private static func application() -> BrowserServices {
         let ejectFailures = EjectFailureAlerts()

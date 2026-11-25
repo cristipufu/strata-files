@@ -3,17 +3,29 @@ import SwiftUI
 /// Settings ▸ Appearance: color themes, light or dark, row spacing and the size of file names.
 struct AppearanceSettings: View {
     @ObservedObject var themes: ThemeChoices
-    @State private var theme = Prefs.shared.theme
-    @State private var density = Prefs.shared.density
-    @State private var size = Prefs.shared.nameTextSize
-    @State private var alternatingRows = Prefs.shared.alternatingRows
-    @State private var previews = Prefs.shared.showIconPreviews
-    @State private var cloudRoots = Prefs.shared.cloudRootCrumbs
+    private let preferences: Prefs
+    @State private var theme: Int
+    @State private var density: Int
+    @State private var size: Double
+    @State private var alternatingRows: Bool
+    @State private var previews: Bool
+    @State private var cloudRoots: Bool
+
+    init(themes: ThemeChoices, preferences: Prefs) {
+        self.themes = themes
+        self.preferences = preferences
+        _theme = State(initialValue: preferences.theme)
+        _density = State(initialValue: preferences.density)
+        _size = State(initialValue: preferences.nameTextSize)
+        _alternatingRows = State(initialValue: preferences.alternatingRows)
+        _previews = State(initialValue: preferences.showIconPreviews)
+        _cloudRoots = State(initialValue: preferences.cloudRootCrumbs)
+    }
 
     var body: some View {
         Form {
             Section("Theme") {
-                Picker("Appearance", selection: Binding(get: { theme }, set: { theme = $0; Prefs.shared.theme = $0 })) {
+                Picker("Appearance", selection: Binding(get: { theme }, set: { theme = $0; preferences.theme = $0 })) {
                     Text("Match the System").tag(0)
                     Text("Light").tag(1)
                     Text("Dark").tag(2)
@@ -43,7 +55,7 @@ struct AppearanceSettings: View {
                 .disabled(themes.chosen.palette == .system).settingAnchor(.windowTint)
             }
             Section("Files") {
-                Picker("Density", selection: Binding(get: { density }, set: { density = $0; Prefs.shared.density = $0 })) {
+                Picker("Density", selection: Binding(get: { density }, set: { density = $0; preferences.density = $0 })) {
                     Text("Compact").tag(0)
                     Text("Regular").tag(1)
                     Text("Spacious").tag(2)
@@ -51,7 +63,7 @@ struct AppearanceSettings: View {
                 .pickerStyle(.segmented).settingAnchor(.density)
                 HStack {
                     Text("Text size")
-                    Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.shared.nameTextSize = $0.rounded() }), in: Prefs.nameTextSizes, step: 1) {
+                    Slider(value: Binding(get: { size }, set: { size = $0.rounded(); preferences.nameTextSize = $0.rounded() }), in: Prefs.nameTextSizes, step: 1) {
                         Text("Text size")
                     } minimumValueLabel: {
                         Text(verbatim: "A").font(.system(size: 10))
@@ -66,8 +78,8 @@ struct AppearanceSettings: View {
                     .font(.system(size: size))
                     .padding(.vertical, [2.0, 5.0, 9.0][min(max(density, 0), 2)])
                     .accessibilityLabel("Preview of a file name at this size")
-                Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; Prefs.shared.alternatingRows = $0 })).settingAnchor(.alternatingRows)
-                Toggle(isOn: Binding(get: { previews }, set: { previews = $0; Prefs.shared.showIconPreviews = $0 })) {
+                Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; preferences.alternatingRows = $0 })).settingAnchor(.alternatingRows)
+                Toggle(isOn: Binding(get: { previews }, set: { previews = $0; preferences.showIconPreviews = $0 })) {
                     Text("Show icon previews")
                     Text("Pictures, documents and movies show a thumbnail of their contents in place of their icon.")
                 }.settingAnchor(.iconPreviews)
@@ -76,7 +88,7 @@ struct AppearanceSettings: View {
                     .foregroundStyle(.secondary)
             }
             Section("Folders") {
-                Toggle(isOn: Binding(get: { cloudRoots }, set: { cloudRoots = $0; Prefs.shared.cloudRootCrumbs = $0 })) {
+                Toggle(isOn: Binding(get: { cloudRoots }, set: { cloudRoots = $0; preferences.cloudRootCrumbs = $0 })) {
                     Text("Show cloud folders as their own place")
                     Text("Dropbox, iCloud Drive and other synced folders start the path bar with their own tinted crumb, in place of Home › Library › CloudStorage.")
                 }.settingAnchor(.cloudRootCrumbs)
@@ -85,11 +97,14 @@ struct AppearanceSettings: View {
         .formStyle(.grouped)
         .modifier(ThemedFormBackground())
         // ⌘+ / ⌘− in the list change the size while this is open.
-        .onReceive(NotificationCenter.default.publisher(for: .appearanceChanged)) { _ in
-            if size != Prefs.shared.nameTextSize { size = Prefs.shared.nameTextSize }
-            if theme != Prefs.shared.theme { theme = Prefs.shared.theme }
+        .onReceive(preferences.notifications.publisher(for: .appearanceChanged)) { _ in
+            if size != preferences.nameTextSize { size = preferences.nameTextSize }
+            if theme != preferences.theme { theme = preferences.theme }
+            density = preferences.density
+            previews = preferences.showIconPreviews
         }
-        .onReceive(Prefs.shared.notifications.publisher(for: .alternatingRowsChanged, object: Prefs.shared)) { _ in alternatingRows = Prefs.shared.alternatingRows }
+        .onReceive(preferences.notifications.publisher(for: .cloudRootCrumbsChanged, object: preferences)) { _ in cloudRoots = preferences.cloudRootCrumbs }
+        .onReceive(preferences.notifications.publisher(for: .alternatingRowsChanged, object: preferences)) { _ in alternatingRows = preferences.alternatingRows }
     }
 }
 

@@ -7,6 +7,60 @@ import StrataTheme
 // MARK: - Data source and delegate
 
 extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate {
+    /// Only expanded nodes are considered, even when the outline contains thousands of ordinary file rows.
+    var visibleExpandedFolders: [FileNode] {
+        guard effectiveMode == .list, !isShowingResults, filter.isEmpty else { return [] }
+        return expandedNodes.allObjects.compactMap { node -> (Int, FileNode)? in
+            guard outlineView.isItemExpanded(node) else { return nil }
+            let row = outlineView.row(forItem: node)
+            return row >= 0 ? (row, node) : nil
+        }.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+
+    /// A capped allowance or a failed directory open falls back to the root watch's periodic refresh.
+    var hasUnwatchedExpandedFolders: Bool {
+        visibleExpandedFolders.contains { !expandedWatches.covers($0.url) }
+    }
+
+    func pruneExpandedWatches() {
+        let visible = visibleExpandedFolders
+        expandedWatches.keepOnly(Set(visible.map { $0.url.fileViewKey }))
+        loading.keepChildReads(for: Set(visible.map(ObjectIdentifier.init)))
+    }
+
+    func watchExpandedFolder(_ node: FileNode) -> Task<Void, Never>? {
+        guard watching.folder != nil, effectiveMode == .list, !isShowingResults, filter.isEmpty,
+              expandedNodes.contains(node), self.node(for: node.url) === node else { return nil }
+        return expandedWatches.watch(node.url, replacingOldest: false) { [weak self, weak node] in
+            guard let self, let node, self.node(for: node.url) === node, outlineView.isItemExpanded(node),
+                  outlineView.row(forItem: node) >= 0 else { return }
+            loading.invalidateChildren(of: node)
+            loadChildren(of: node)
+        }
+    }
+
+    func outlineViewItemWillExpand(_ notification: Notification) {
+        guard !isShowingResults, let node = notification.userInfo?["NSObject"] as? FileNode else { return }
+        expandedNodes.add(node)
+        _ = watchExpandedFolder(node)
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        guard !isApplyingListing, !isShowingResults, let node = notification.userInfo?["NSObject"] as? FileNode else { return }
+        // Reopening a cached folder must pick up changes made while it was collapsed.
+        loadChildren(of: node)
+        // AppKit can remember expansion below a collapsed parent.
+        for child in visibleExpandedFolders where child !== node && !expandedWatches.contains(child.url) {
+            loadChildren(of: child)
+        }
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        guard let node = notification.userInfo?["NSObject"] as? FileNode else { return }
+        expandedNodes.remove(node)
+        pruneExpandedWatches()
+    }
+
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let node = item as? FileNode else { return rows.count }
         guard let children = node.children else {

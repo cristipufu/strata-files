@@ -20,11 +20,14 @@ import Foundation
     @discardableResult
     func watch(_ folders: [URL], repositoryOf folder: URL, in store: GitStatusStore,
                changed: @escaping @MainActor @Sendable () -> Void,
+               poll: (@MainActor @Sendable () -> Void)? = nil,
+               hasUnwatchedChildren: (@MainActor @Sendable () -> Bool)? = nil,
                filesChanged: @escaping @MainActor @Sendable ([FileEntry]) -> Void,
                isCurrent: @escaping () -> Bool) -> Task<Void, Never> {
         stop()
         self.folder = folder
-        let listing = ListingWatch(folders, changed: changed, filesChanged: filesChanged)
+        let listing = ListingWatch(folders, changed: changed, poll: poll,
+                                   hasUnwatchedChildren: hasUnwatchedChildren, filesChanged: filesChanged)
         self.listing = listing
         finding = Task { [weak self] in
             let observation = await store.observe(folder)

@@ -3,11 +3,11 @@ import Foundation
 /// Owns an expanded tree's native directory watchers and its share of the window-wide allowance.
 @MainActor final class FolderWatchers {
     final class Budget {
-        static let shared = Budget(limit: 96)
+        static let shared = Budget()
         let limit: Int
         fileprivate(set) var count = 0
 
-        init(limit: Int) { self.limit = max(0, limit) }
+        init(limit: Int = 96) { self.limit = max(0, limit) }
 
         fileprivate func fits(_ requested: Int) -> Bool { requested <= limit - count }
     }
@@ -15,12 +15,23 @@ import Foundation
     /// A folder's watchers, or its share of the allowance held while its folders open away from the main thread.
     private enum Registration {
         case opening(token: UUID, task: Task<Void, Never>, reserved: Int)
-        case watching([DirectoryWatcher])
+        case watching(token: UUID, [DirectoryWatcher])
+
+        var token: UUID {
+            switch self {
+            case .opening(let token, _, _), .watching(let token, _): token
+            }
+        }
+
+        var opening: Task<Void, Never>? {
+            if case .opening(_, let task, _) = self { return task }
+            return nil
+        }
 
         var held: Int {
             switch self {
             case .opening(_, _, let reserved): reserved
-            case .watching(let watchers): watchers.count
+            case .watching(_, let watchers): watchers.count
             }
         }
     }
@@ -41,13 +52,17 @@ import Foundation
 
     func contains(_ url: URL) -> Bool { sources[url.fileViewKey] != nil }
 
-    func watch(_ url: URL, onChange: @escaping @MainActor @Sendable () -> Void) {
+    func covers(_ url: URL) -> Bool { sources[url.fileViewKey]?.held == directories.directories(for: url).count }
+
+    @discardableResult
+    func watch(_ url: URL, replacingOldest: Bool = true, onChange: @escaping @MainActor @Sendable () -> Void) -> Task<Void, Never>? {
         let key = url.fileViewKey
-        guard limit > 0, sources[key] == nil else { return }
+        if let existing = sources[key] { return existing.opening }
+        guard limit > 0 else { return nil }
         let folders = directories.directories(for: url)
         // Only this tree's oldest registrations can be replaced; another window keeps its watchers.
         while sources.count >= limit || !budget.fits(folders.count) {
-            guard let oldest = order.first else { return }
+            guard replacingOldest, let oldest = order.first else { return nil }
             remove(oldest)
         }
         // Held while its folders open, so another tree can't take it meanwhile; what doesn't open is given back.
@@ -55,10 +70,14 @@ import Foundation
         budget.count += folders.count
         order.append(key)
         let task = Task { [weak self] in
-            let opened = await DirectoryWatcher.watching(folders, onChange: onChange)
+            let opened = await DirectoryWatcher.watching(folders) { [weak self] in
+                guard self?.sources[key]?.token == token else { return }
+                onChange()
+            }
             self?.opened(opened, for: key, token: token)
         }
         sources[key] = .opening(token: token, task: task, reserved: folders.count)
+        return task
     }
 
     /// Stops watching the folder and its descendants, including the physical system Applications tree.
@@ -68,6 +87,10 @@ import Foundation
             roots.contains { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }
         }
         for key in removed { remove(key) }
+    }
+
+    func keepOnly(_ visible: Set<String>) {
+        for key in order where !visible.contains(key) { remove(key) }
     }
 
     func removeAll() {
@@ -91,7 +114,7 @@ import Foundation
             sources[key] = nil
             order.removeAll { $0 == key }
         } else {
-            sources[key] = .watching(watchers)
+            sources[key] = .watching(token: token, watchers)
         }
     }
 

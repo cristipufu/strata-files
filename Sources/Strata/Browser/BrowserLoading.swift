@@ -168,16 +168,27 @@ nonisolated struct VolumeSpace: Sendable, Equatable {
         children.removeAll()
     }
 
+    /// A collapsed or hidden branch has no owner for an outstanding child read.
+    func keepChildReads(for visible: Set<ObjectIdentifier>) {
+        for key in children.keys where !visible.contains(key) {
+            children.removeValue(forKey: key)?.session.invalidate()
+        }
+    }
+
+    func invalidateChildren(of node: FileNode) {
+        children.removeValue(forKey: ObjectIdentifier(node))?.session.invalidate()
+    }
+
     /// Coalesce native outline requests by row identity, not path. A replaced row can use the same path while an
     /// earlier read finishes. Root refreshes invalidate every child session before reusing any surviving rows.
     @discardableResult
-    func loadChildren(of node: FileNode, showHidden: Bool, applications: ApplicationsFolders,
+    func loadChildren(of node: FileNode, showHidden: Bool, applications: ApplicationsFolders, after watched: Task<Void, Never>? = nil,
                       receive: @escaping ([FileEntry]) -> Void) -> Task<Void, Never> {
         let key = ObjectIdentifier(node)
         if let work = children[key]?.session.task { return work }
         let session = DirectoryReadSession(reader: reader)
         children[key] = ChildRead(node: node, session: session)
-        return session.load(node.url, showHidden: showHidden, applications: applications) { [weak self, weak session] result, _ in
+        return session.load(node.url, showHidden: showHidden, applications: applications, after: watched) { [weak self, weak session] result, _ in
             guard let self, let session, children[key]?.session === session else { return }
             children.removeValue(forKey: key)
             receive((try? result.get())?.entries ?? [])

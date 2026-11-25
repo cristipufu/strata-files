@@ -60,6 +60,7 @@ nonisolated struct DirectoryReader: Sendable {
 /// the underlying reader cannot stop its I/O when cancelled. The view owns presentation state and applying entries.
 @MainActor final class DirectoryReadSession {
     private let reader: DirectoryReader
+    private var pendingFileEdits: [String: FileEntry] = [:]
     private(set) var generation = 0
     private(set) var task: Task<Void, Never>?
 
@@ -69,8 +70,18 @@ nonisolated struct DirectoryReader: Sendable {
 
     func invalidate() {
         generation += 1
+        pendingFileEdits.removeAll()
         task?.cancel()
         task = nil
+    }
+
+    /// Compare edits with the rows actually displayed. Edits received during a read or a held inline
+    /// edit are coalesced until the completed listing is applied. Replacing the read discards them.
+    func needsReload(for edits: [FileEntry], awaitingDisplay: Bool, listed: (String) -> FileEntry?) -> Bool {
+        for file in edits { pendingFileEdits[file.locationKey] = file }
+        guard task == nil, !awaitingDisplay, !pendingFileEdits.isEmpty else { return false }
+        defer { pendingFileEdits.removeAll(keepingCapacity: true) }
+        return pendingFileEdits.values.contains { ListingWatch.differs(listed($0.locationKey), from: $0) }
     }
 
     @discardableResult
@@ -85,6 +96,7 @@ nonisolated struct DirectoryReader: Sendable {
             // What has to be ready first: the folder's watchers, so no change made while it's read is missed.
             await after?.value
             do {
+                try Task.checkCancellation()
                 if invalidateCopy {
                     await reader.invalidate(folder)
                 }

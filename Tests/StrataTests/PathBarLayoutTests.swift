@@ -61,6 +61,26 @@ import Testing
         #expect(!window.isVisible)
     }
 
+    @Test func narrowCloudPathsKeepAnAccessibleAccountAndTheCurrentFolder() throws {
+        let environment = try IndependentEnvironment()
+        let bar = makeBar(environment, embedded: true)
+        let account = Places.home.appending(path: "Library/CloudStorage/GoogleDrive-alexandra@example.com", directoryHint: .isDirectory)
+        bar.url = account.appending(path: "Projects/2026")
+        let window = try host(bar)
+        defer { window.contentView = nil }
+        let root = try #require(bar.crumbButtons.first), current = try #require(bar.crumbButtons.last)
+        for width in [200, 240, 320, 520] {
+            window.setContentSize(NSSize(width: width + 32, height: 64))
+            window.contentView?.layoutSubtreeIfNeeded()
+            #expect(!root.isHidden && !current.isHidden)
+            #expect(root.frame.width >= CrumbButton.minimumCloudWidth)
+            #expect(current.frame.width >= min(96, current.intrinsicContentSize.width))
+            #expect(root.frame.maxX <= current.frame.minX)
+            #expect(root.destination?.path == account.path)
+            #expect(root.accessibilityLabel()?.contains(account.lastPathComponent) == true)
+        }
+    }
+
     private func makeBar(_ environment: IndependentEnvironment, embedded: Bool) -> PathBar {
         let services = environment.services
         return PathBar(preferences: services.preferences, places: services.places, index: services.index,

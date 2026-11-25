@@ -198,12 +198,16 @@ struct FolderWatcherTests {
         watchers.watch(tree.url("apps")) {}
         await watchers.settled()
         #expect(watchers.contains(tree.url("apps")))
+        #expect(!watchers.covers(tree.url("apps")))
         #expect(budget.count == 1)
         watchers.watch(tree.url("other")) {}
         await watchers.settled()
         #expect(watchers.contains(tree.url("apps")))
         #expect(watchers.contains(tree.url("other")))
+        #expect(watchers.covers(tree.url("other")))
         #expect(budget.count == 2)
+        watchers.watch(tree.url("missing"), replacingOldest: false) {}
+        #expect(!watchers.contains(tree.url("missing")) && watchers.covers(tree.url("other")))
         watchers.removeAll()
         #expect(budget.count == 0)
         #expect(tree.snapshot() == before)

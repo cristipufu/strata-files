@@ -67,8 +67,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
                                                object: names)
         NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded,
                                                object: IconCache.shared)
-        preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged,
-                                              object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(cloudRootCrumbsChanged), name: .cloudRootCrumbsChanged,
+                                              object: preferences)
 
         setUpCrumbs()
         setUpField()
@@ -203,8 +203,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
         rebuild()
     }
 
-    /// Settings ▸ Appearance ▸ Files ▸ Show cloud folders as their own place.
-    @objc private func appearanceChanged() {
+    /// Settings ▸ Appearance ▸ Folders ▸ Show cloud folders as their own place.
+    @objc private func cloudRootCrumbsChanged() {
         guard preferences.cloudRootCrumbs != showsCloudRoots else { return }
         showsCloudRoots = preferences.cloudRootCrumbs
         if !isEditing, title == nil, url != nil { rebuild() }
@@ -532,6 +532,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
 /// A breadcrumb segment with a soft hover highlight.
 final class CrumbButton: NSButton {
+    static let minimumCloudWidth: CGFloat = 44
     var destination: URL?
     /// The cloud account this crumb stands for: it sits in a pill of the service's color.
     let cloud: CloudProvider?
