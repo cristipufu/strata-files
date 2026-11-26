@@ -90,12 +90,11 @@ import Testing
             let otherFrame = folders[1 - index].frame
             let before = scroll.contentView.bounds.size
             try #require(before.width > 460 && before.width < 750)
-            try scrollWithKnob(pane.tableView)
             let last = try #require(pane.entries.last).url
             columns.select([last], scroll: false)
             try expectFitted(columns, pane: pane)
             #expect(scroll.contentView.bounds.height < before.height)
-            try await scrollWithWheel(pane.tableView)
+            try await scrollFromTopToBottomWithWheel(pane.tableView)
             try expectLastRowVisible(pane.tableView)
             #expect(columns.selectedEntries.map(\.url) == [last])
             #expect(other.selectedEntries.map(\.url) == otherSelection)
@@ -161,20 +160,26 @@ import Testing
         #expect(knob.doubleValue == 1)
     }
 
-    private func scrollWithWheel(_ table: NSTableView) async throws {
+    private func scrollFromTopToBottomWithWheel(_ table: NSTableView) async throws {
         let scroll = try #require(table.enclosingScrollView)
+        let scroller = try #require(scroll.verticalScroller)
+        let clip = scroll.contentView
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: -clip.contentInsets.top))
+        scroll.reflectScrolledClipView(clip)
+        try #require(scroller.doubleValue == 0)
+
         let source = try #require(CGEventSource(stateID: .privateState))
-        let event = try #require(CGEvent(scrollWheelEvent2Source: source, units: .line,
-            wheelCount: 1, wheel1: -20, wheel2: 0, wheel3: 0))
-        event.flags = []
-        let wheel = try #require(NSEvent(cgEvent: event))
-        for _ in 0..<20 { table.scrollWheel(with: wheel) }
-        // Native wheel scrolling animates; wait for its terminal position without forcing another layout pass.
-        for _ in 0..<250 {
-            if scroll.verticalScroller?.doubleValue == 1 { break }
+        // AppKit applies wheel input on subsequent run-loop turns in a headless window.
+        // Deliver fresh ticks until the native scroller reaches the end.
+        for _ in 0..<100 {
+            let event = try #require(CGEvent(scrollWheelEvent2Source: source, units: .line,
+                wheelCount: 1, wheel1: -8, wheel2: 0, wheel3: 0))
+            event.flags = []
+            table.scrollWheel(with: try #require(NSEvent(cgEvent: event)))
             try await Task.sleep(for: .milliseconds(20))
+            if scroller.doubleValue == 1 { return }
         }
-        #expect(scroll.verticalScroller?.doubleValue == 1)
+        Issue.record("Wheel scrolling stopped at \(scroller.doubleValue) before the bottom of the column")
     }
 
     private func expectLastRowVisible(_ table: NSTableView) throws {
