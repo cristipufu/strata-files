@@ -16,7 +16,7 @@ final class FileDrag: NSObject, NSDraggingInfo, DragKeys {
     var draggingLocation: NSPoint { .zero }
     var draggedImageLocation: NSPoint { .zero }
     nonisolated var draggedImage: NSImage? { nil }
-    var draggingSource: Any? { nil }
+    var draggingSource: Any?
     var draggingFormation: NSDraggingFormation = .none
     var animatesToDestination = false
     var numberOfValidItemsForDrop = 1

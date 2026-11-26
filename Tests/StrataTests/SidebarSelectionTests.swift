@@ -36,10 +36,22 @@ struct SidebarSelectionTests {
             #expect(sidebar.outline.selectedRow == (try row(in: section)))
         }
         let locations = try #require(sidebar.sections.first { $0.id == "locations" })
+        environment.preferences.sidebarSectionOrder = ["locations", "frequent"]
+        func hover(_ row: Int) -> Int? {
+            let frame = sidebar.outline.rect(ofRow: row)
+            return sidebar.row(for: folder, at: NSPoint(x: frame.midX, y: frame.midY))
+        }
+        for id in ["locations", "frequent"] {
+            let hovered = try row(in: id)
+            #expect(hover(hovered) == hovered)
+        }
+        #expect(hover(sidebar.outline.row(forItem: locations)) == nil)
         sidebar.outline.collapseItem(locations)
         let clicked = navigations
         sidebar.highlight(.folder(folder))
         #expect(sidebar.outline.selectedRow == (try row(in: "frequent")))
+        let hovered = try row(in: "frequent")
+        #expect(hover(hovered) == hovered)
         #expect(navigations == clicked)
         sidebar.outline.expandItem(locations)
         sidebar.highlight(.folder(folder))

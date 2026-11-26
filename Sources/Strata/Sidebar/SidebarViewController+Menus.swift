@@ -4,8 +4,28 @@ import AppKit
 /// be removed.
 extension SidebarViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        let keyboardMenu = outline.clickedRow < 0 && outline.window?.currentEvent?.type == .keyDown
+        let row = keyboardMenu ? outline.selectedRow : outline.clickedRow
+        updateMenu(menu, for: outline.item(atRow: row))
+    }
+
+    func updateMenu(_ menu: NSMenu, for row: Any?) {
         menu.removeAllItems()
-        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
+        if let section = row as? SidebarSection {
+            addSectionMoves(section, to: menu)
+            return
+        }
+        guard let item = row as? SidebarItem else { return }
+        addItemActions(item, to: menu)
+        // Headers are unselectable. The selected child's menu also gives keyboard users access to its section.
+        guard let section = outline.parent(forItem: item) as? SidebarSection else { return }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        let submenu = NSMenu(title: section.title)
+        addSectionMoves(section, to: submenu)
+        menu.addItem(withTitle: section.title, action: nil, keyEquivalent: "").submenu = submenu
+    }
+
+    private func addItemActions(_ item: SidebarItem, to menu: NSMenu) {
         if case .containers = item.target { return }
         if case .workspace(let name) = item.target {
             addWorkspaceItems(name, to: menu)
@@ -30,29 +50,61 @@ extension SidebarViewController: NSMenuDelegate {
             return
         }
         guard let url = item.url else { return }
+        let add = { (title: String.LocalizationValue, action: Selector) in
+            let entry = NSMenuItem(title: String(localized: title), action: action, keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = url
+            menu.addItem(entry)
+        }
         if Trash.isTrash(url) {
-            add("Open in New Tab", #selector(openInNewTab(_:)), url)
+            add("Open in New Tab", #selector(openInNewTab(_:)))
             menu.addItem(.separator())
             let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
             menu.addItem(empty)
             return
         }
         let favorite = isFavorite(item)
-        add("Open in New Tab", #selector(openInNewTab(_:)), url)
-        add("Copy Path", #selector(copyItemPath(_:)), url)
+        add("Open in New Tab", #selector(openInNewTab(_:)))
+        add("Copy Path", #selector(copyItemPath(_:)))
         menu.addItem(.separator())
         if favorite {
-            add("Remove from Sidebar", #selector(removeFavorite(_:)), url)
+            add("Remove from Sidebar", #selector(removeFavorite(_:)))
         } else if canAddToFavorites(item) {
-            add("Add to Favorites", #selector(addFavorite(_:)), url)
+            add("Add to Favorites", #selector(addFavorite(_:)))
         }
         if isFrequent(item) {
-            add("Remove from Frequent", #selector(removeFrequent(_:)), url)
+            add("Remove from Frequent", #selector(removeFrequent(_:)))
         }
         if item.isEjectable {
             menu.addItem(.separator())
-            add("Eject “\(item.title)”", #selector(ejectItem(_:)), url)
+            add("Eject “\(item.title)”", #selector(ejectItem(_:)))
         }
+    }
+
+    private struct SectionMove {
+        enum Direction { case up, down }
+        let id: String
+        let direction: Direction
+
+        func order(in layout: SidebarSectionLayout) -> [String]? {
+            guard let index = layout.visible.firstIndex(where: { $0.id == id }) else { return nil }
+            return layout.moving(id, toGap: direction == .up ? index - 1 : index + 2)
+        }
+    }
+
+    private func addSectionMoves(_ section: SidebarSection, to menu: NSMenu) {
+        func add(_ title: String, _ direction: SectionMove.Direction) {
+            let item = menu.addItem(withTitle: title, action: #selector(moveSection(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = SectionMove(id: section.id, direction: direction)
+        }
+        add(String(localized: "Move Section Up", comment: "Sidebar menu: move this section above the previous one"), .up)
+        add(String(localized: "Move Section Down", comment: "Sidebar menu: move this section below the next one"), .down)
+    }
+
+    @objc private func moveSection(_ sender: NSMenuItem) {
+        guard let move = sender.representedObject as? SectionMove, let order = move.order(in: layout) else { return }
+        preferences.sidebarSectionOrder = order
     }
 
     /// Disconnect (while connected), edit, copy its address, remove.
@@ -145,13 +197,6 @@ extension SidebarViewController: NSMenuDelegate {
         services.workspaces.confirmDelete(name, in: view.window)
     }
 
-    private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {
-        let entry = NSMenuItem(title: String(localized: title), action: action, keyEquivalent: "")
-        entry.target = self
-        entry.representedObject = url
-        outline.menu?.addItem(entry)
-    }
-
     @objc private func forgetTag(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         services.tags.forget(name)
@@ -192,6 +237,9 @@ extension SidebarViewController: NSMenuDelegate {
 
 extension SidebarViewController: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(moveSection(_:)) {
+            return (item.representedObject as? SectionMove)?.order(in: layout) != nil
+        }
         guard item.action == #selector(ejectItem(_:)), let url = item.representedObject as? URL else { return true }
         return !services.volumeEjector.isEjecting(url)
     }

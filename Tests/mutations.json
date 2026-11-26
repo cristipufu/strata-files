@@ -8480,6 +8480,20 @@
     "tests": "SidebarSelectionTests/duplicateLocationsKeepTheChosenSectionAcrossNavigationAndRebuilds"
   },
   {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "rule": "Sidebar section drops: a private heading payload can enter file handling when its source is external",
+    "find": "        if info.draggingPasteboard.types?.contains(.sidebarSection) == true {\n            defer { sectionDrop = nil }",
+    "replace": "        if info.draggingSource != nil, info.draggingPasteboard.types?.contains(.sidebarSection) == true {\n            defer { sectionDrop = nil }",
+    "tests": "SidebarSectionOrderTests/aSectionPayloadWithAFileURLCannotPinOrTransferAFolder"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "rule": "Sidebar section drops: a changed destination can receive an outdated insertion",
+    "find": "let order = sectionOrder(for: info, at: index), order == sectionDrop?.order else { return false }",
+    "replace": "let order = sectionOrder(for: info, at: index) else { return false }",
+    "tests": "SidebarSectionOrderTests/sectionDropsRefuseOtherSourcesChildrenAndChangedDestinations"
+  },
+  {
     "file": "Strata/Support/LatestUpdate.swift",
     "rule": "Background updates: a burst schedules only one UI delivery",
     "find": "            guard !$0.scheduled else { return false }",

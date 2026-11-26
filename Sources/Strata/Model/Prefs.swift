@@ -15,6 +15,7 @@ extension Notification.Name {
     package static let previewOptionsChanged = Notification.Name("StrataPreviewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
+    package static let sidebarSectionOrderChanged = Notification.Name("StrataSidebarSectionOrderChanged")
     /// The folders excluded from the file index changed (Settings ▸ Search & Index); posted by the preferences that changed.
     package static let indexExclusionsChanged = Notification.Name("StrataIndexExclusionsChanged")
     package static let indexSwitched = Notification.Name("StrataIndexSwitched")
@@ -105,6 +106,7 @@ package final class Prefs: PreviewTextSettings {
         static let knownListColumns = "knownListColumns"
         static let dockSearch = "dockSearch"
         static let collapsedSidebarSections = "collapsedSidebarSections"
+        static let sidebarSectionOrder = "sidebarSectionOrder"
         static let newFileExtension = "newFileExtension"
         static let dualPaneAddressBars = "dualPaneAddressBars"
         static let indexExcludedFolders = "indexExcludedFolders"
@@ -141,6 +143,15 @@ package final class Prefs: PreviewTextSettings {
     package var collapsedSidebarSections: Set<String> {
         get { Set(defaults.stringArray(forKey: Key.collapsedSidebarSections) ?? []) }
         set { defaults.set(newValue.sorted(), forKey: Key.collapsedSidebarSections) }
+    }
+
+    package var sidebarSectionOrder: [String] {
+        get { defaults.stringArray(forKey: Key.sidebarSectionOrder) ?? [] }
+        set {
+            guard newValue != sidebarSectionOrder else { return }
+            defaults.set(newValue, forKey: Key.sidebarSectionOrder)
+            notifications.post(name: .sidebarSectionOrderChanged, object: self)
+        }
     }
 
     /// Whether Strata keeps its file index (Settings ▸ Search & Index): on until you turn it off.

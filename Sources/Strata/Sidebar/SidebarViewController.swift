@@ -32,22 +32,25 @@ final class SidebarViewController: NSViewController {
     private let tree: FolderTreeController
     /// Opens the location a drag rests on, in the current pane.
     private lazy var springLoader = SpringLoader(view: outline, frame: { [weak self] folder in
-        guard let self, let row = row(for: folder) else { return nil }
+        guard let self, let row = hoveredRow(for: folder) else { return nil }
         return outline.rect(ofRow: row)
     }, open: { [weak self] folder, _ in
-        guard let self, let row = row(for: folder) else { return }
+        guard let self, let row = hoveredRow(for: folder) else { return }
         outline.selectRowIndexes([row], byExtendingSelection: false)
     })
 
-    private func row(for folder: URL) -> Int? {
-        for section in sections {
-            guard let item = section.items.first(where: { $0.url?.fileViewKey == folder.fileViewKey }) else { continue }
-            let row = outline.row(forItem: item)
-            return row >= 0 ? row : nil
-        }
-        return nil
+    private func hoveredRow(for folder: URL) -> Int? {
+        guard let window = outline.window else { return nil }
+        return row(for: folder, at: outline.convert(window.mouseLocationOutsideOfEventStream, from: nil))
     }
-    private(set) var sections: [SidebarSection] = []
+
+    func row(for folder: URL, at point: NSPoint) -> Int? {
+        let row = outline.row(at: point)
+        guard let url = (outline.item(atRow: row) as? SidebarItem)?.url, PathSpelling.short(url) == PathSpelling.short(folder) else { return nil }
+        return row
+    }
+    private(set) var layout = SidebarSectionLayout([], saved: [])
+    var sections: [SidebarSection] { layout.visible }
     private var cloudFolders: [CloudFolder] = []
     private(set) var cloudRead: Task<Void, Never>?
     /// Sections being opened and closed to match what you chose, not by you.
@@ -57,6 +60,7 @@ final class SidebarViewController: NSViewController {
     private var chosenRow: (section: String, target: SidebarTarget)?
     /// Whether the current drag may go on the Trash, worked out once per drag.
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
+    private var sectionDrop: (drag: Int, order: [String])?
 
     override func loadView() {
         let scroll = placesScroll
@@ -102,8 +106,11 @@ final class SidebarViewController: NSViewController {
             openWorkspaceRow(item)
             return true
         }
-        outline.registerForDraggedTypes(FileDrop.types + [.sidebarFavorite])
-        outline.onDragEnd = { [weak self] in self?.springLoader.cancel() }
+        outline.registerForDraggedTypes(FileDrop.types + [.sidebarFavorite, .sidebarSection])
+        outline.onDragEnd = { [weak self] in
+            self?.springLoader.cancel()
+            self?.sectionDrop = nil
+        }
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.setDraggingSourceOperationMask([], forLocal: false)
         let menu = NSMenu()
@@ -143,56 +150,67 @@ final class SidebarViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(ejectionsChanged), name: .volumeEjectionsChanged,
                                                object: services.volumeEjector)
         preferences.notifications.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(sectionOrderChanged), name: .sidebarSectionOrderChanged, object: preferences)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
     }
 
     func reload() {
-        let wasSuppressed = suppressSelection
-        suppressSelection = true
-        defer { suppressSelection = wasSuppressed }
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
             + Places.favorites(preferences: preferences, checks: services.places).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
-        sections = [
+        displaySections([
             SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites),
             workspacesSection(), searchesSection(), frequentSection(besides: pinned), insightsSection(),
             locationsSection(besides: pinned), serversSection(), tagsSection(),
-        ].compactMap { $0 }
+        ]) {
+            if let current { highlight(current) }
+        }
+    }
+
+    @objc private func sectionOrderChanged() {
+        let selected = outline.item(atRow: outline.selectedRow) as? SidebarItem
+        displaySections(layout.defaults) {
+            selectRow(selected.map { outline.row(forItem: $0) })
+        }
+    }
+
+    private func displaySections(_ defaults: [SidebarSection], restoreSelection: () -> Void) {
+        let wasSuppressed = suppressSelection
+        suppressSelection = true
+        defer { suppressSelection = wasSuppressed }
+        layout = SidebarSectionLayout(defaults, saved: preferences.sidebarSectionOrder)
         applyingCollapsed = true
         outline.reloadData()
         applyingCollapsed = false
         applyCollapsed()
-        if let current { highlight(current) }
+        restoreSelection()
     }
 
-    private func workspacesSection() -> SidebarSection? {
+    private func workspacesSection() -> SidebarSection {
         let workspaces = services.workspaces.all.map { workspace in
             let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
             item.help = services.workspaces.help(workspace)
             return item
         }
-        guard !workspaces.isEmpty else { return nil }
         return SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
                               items: workspaces)
     }
 
-    private func searchesSection() -> SidebarSection? {
+    private func searchesSection() -> SidebarSection {
         let searches = services.savedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
-        guard !searches.isEmpty else { return nil }
         return SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches)
     }
 
     /// The folders opened most, besides the favorites (`pinned`), your home folder, the top and the Trash.
-    private func frequentSection(besides pinned: Set<String>) -> SidebarSection? {
+    private func frequentSection(besides pinned: Set<String>) -> SidebarSection {
         let home = Places.home.path
         let frequent = services.visits.ranked()
             .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0)
                 && services.places.isFolder($0.path) != false }
             .prefix(5)
             .map { SidebarItem(Place(title: services.places.name($0), url: $0, symbol: "folder")) }
-        guard !frequent.isEmpty else { return nil }
         return SidebarSection(id: "frequent", title: String(localized: "Frequent", comment: "Sidebar section title: folders you open often"),
                               items: Array(frequent))
     }
@@ -222,7 +240,7 @@ final class SidebarViewController: NSViewController {
     }
 
     /// Servers you've connected to: an SFTP server or a bucket each, green while connected.
-    private func serversSection() -> SidebarSection? {
+    private func serversSection() -> SidebarSection {
         let servers = services.remote.servers.all.map { server -> SidebarItem in
             let item = SidebarItem(title: server.name, target: .server(server.id),
                                    symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")
@@ -230,13 +248,12 @@ final class SidebarViewController: NSViewController {
             if services.remote.status.connected.contains(server.id) { item.tint = .systemGreen }
             return item
         }
-        guard !servers.isEmpty else { return nil }
         return SidebarSection(id: "servers", title: String(localized: "Servers", comment: "Sidebar section title: SFTP servers and S3 buckets"),
                               items: servers)
     }
 
     /// The owner's visible tags, in catalog order. Each searches Spotlight; All Tags opens their settings.
-    private func tagsSection() -> SidebarSection? {
+    private func tagsSection() -> SidebarSection {
         var tags = services.tags.catalog.sidebarTags.map { tag in
             let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
                                    symbol: tag.displayColor == nil ? "circle" : "circle.fill")
@@ -292,7 +309,11 @@ final class SidebarViewController: NSViewController {
         let wasSuppressed = suppressSelection
         suppressSelection = true
         defer { suppressSelection = wasSuppressed }
-        if let row {
+        selectRow(row)
+    }
+
+    private func selectRow(_ row: Int?) {
+        if let row, row >= 0 {
             outline.selectRowIndexes([row], byExtendingSelection: false)
         } else {
             outline.deselectAll(nil)
@@ -465,6 +486,11 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     // Favorites can be dragged to reorder them, and the folders you could add to Favorites (Frequent, Locations) can be
     // dragged in among them. A private type, so dropping one anywhere else never moves the folder on disk.
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        if let section = item as? SidebarSection {
+            let writer = NSPasteboardItem()
+            writer.setString(section.id, forType: .sidebarSection)
+            return writer
+        }
         guard let item = item as? SidebarItem, let url = item.url, isFavorite(item) || canAddToFavorites(item) else { return nil }
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setString(url.path, forType: .sidebarFavorite)
@@ -498,6 +524,14 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     // (shared with every view): move on the same disk, copy onto another one, Option copies.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
+        if info.draggingPasteboard.types?.contains(.sidebarSection) == true {
+            springLoader.cancel()
+            sectionDrop = nil
+            guard let gap = sectionGap(item, index), let order = sectionOrder(for: info, at: gap) else { return [] }
+            sectionDrop = (info.draggingSequenceNumber, order)
+            outlineView.setDropItem(nil, dropChildIndex: gap)
+            return .move
+        }
         // Files resting on a location spring it open; reordering favorites doesn't.
         let isReorder = info.draggingPasteboard.string(forType: .sidebarFavorite) != nil
         let copies = services.copies
@@ -536,6 +570,14 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
+        if info.draggingPasteboard.types?.contains(.sidebarSection) == true {
+            defer { sectionDrop = nil }
+            // A section can appear or disappear between showing the insertion line and receiving the drop.
+            guard item == nil, sectionDrop?.drag == info.draggingSequenceNumber,
+                  let order = sectionOrder(for: info, at: index), order == sectionDrop?.order else { return false }
+            preferences.sidebarSectionOrder = order
+            return true
+        }
         let copies = services.copies
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite), !path.isEmpty {
@@ -559,6 +601,19 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                                        undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
         }
         return true
+    }
+
+    private func sectionOrder(for drag: NSDraggingInfo, at gap: Int) -> [String]? {
+        guard drag.draggingSource as? NSOutlineView === outline,
+              let id = drag.draggingPasteboard.string(forType: .sidebarSection) else { return nil }
+        return layout.moving(id, toGap: gap)
+    }
+
+    private func sectionGap(_ parent: Any?, _ childIndex: Int) -> Int? {
+        if parent == nil { return childIndex }
+        guard let section = parent as? SidebarSection, let index = sections.firstIndex(where: { $0 === section }) else { return nil }
+        if childIndex == NSOutlineViewDropOnItemIndex { return index }
+        return childIndex == section.items.count ? index + 1 : nil
     }
 }
 

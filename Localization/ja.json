@@ -1035,6 +1035,8 @@
     "Move into Current Folder": "現在のフォルダに移動",
     "Move into “%@”": "「%@」に移動",
     "Move Item Here": "ここに項目を移動",
+    "Move Section Down": "セクションを下に移動",
+    "Move Section Up": "セクションを上に移動",
     "Move selection to the other pane": "選択項目をもう一方のペインに移動",
     "Move To": "移動先",
     "Move to Other Pane": "もう一方のペインに移動",

@@ -1035,6 +1035,8 @@
     "Move into Current Folder": "搬移到目前的檔案夾",
     "Move into “%@”": "搬移到「%@」中",
     "Move Item Here": "搬移項目至此",
+    "Move Section Down": "下移區段",
+    "Move Section Up": "上移區段",
     "Move selection to the other pane": "將所選項目搬移到另一個窗格",
     "Move To": "搬移到",
     "Move to Other Pane": "搬移到另一個窗格",

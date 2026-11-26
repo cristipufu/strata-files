@@ -1035,6 +1035,8 @@
     "Move into Current Folder": "현재 폴더로 이동",
     "Move into “%@”": "‘%@’(으)로 이동",
     "Move Item Here": "여기로 항목 이동",
+    "Move Section Down": "섹션을 아래로 이동",
+    "Move Section Up": "섹션을 위로 이동",
     "Move selection to the other pane": "선택 항목을 다른 패널로 이동",
     "Move To": "다음으로 이동",
     "Move to Other Pane": "다른 패널로 이동",

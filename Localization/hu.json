@@ -1146,6 +1146,8 @@
     "Move into Current Folder": "Áthelyezés az aktuális mappába",
     "Move into “%@”": "Áthelyezés ide: „%@”",
     "Move Item Here": "Elem áthelyezése ide",
+    "Move Section Down": "Szakasz mozgatása lefelé",
+    "Move Section Up": "Szakasz mozgatása felfelé",
     "Move selection to the other pane": "A kijelölés áthelyezése a másik panelre",
     "Move To": "Áthelyezés",
     "Move to Other Pane": "Áthelyezés a másik panelre",
