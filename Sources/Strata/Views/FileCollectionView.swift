@@ -132,22 +132,31 @@ protocol FileItemCollection: FileCollectionController {
     var springLoader: SpringLoader { get }
     var dropHighlight: DropHighlightView { get }
     func index(of url: URL) -> Int?
+    func entryIndex(at path: IndexPath) -> Int?
+    var backgroundDropPath: IndexPath { get }
 }
 
 extension FileItemCollection {
+    func entryIndex(at path: IndexPath) -> Int? {
+        guard path.count == 2, path.section == 0, entries.indices.contains(path.item) else { return nil }
+        return path.item
+    }
+
+    var backgroundDropPath: IndexPath { IndexPath(item: entries.count, section: 0) }
+
     func pasteboardWriter(at indexPath: IndexPath) -> NSPasteboardWriting? {
-        guard indexPath.count == 2, entries.indices.contains(indexPath.item) else { return nil }
-        return ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies)
+        guard let index = entryIndex(at: indexPath) else { return nil }
+        return ContainerDragItem.writer(for: entries[index].url, copies: copies)
     }
 
     func validateDrop(_ info: NSDraggingInfo, proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                       dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
         let urls = FileDrop.urls(info, copies: copies)
         let proposed = proposedIndexPath.pointee as IndexPath
-        let index = proposed.count == 2 ? proposed.item : -1
-        // The folder the drag rests on: never one of the dragged items or inside one.
-        let folder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
-            && !FileDrop.isInside(urls, entries[index].url, during: info) ? entries[index].url : nil
+        guard entryIndex(at: proposed) != nil || proposed == backgroundDropPath else { endDrop(); return [] }
+        let folder = dropFolder(at: proposed, operation: dropOperation.pointee).flatMap {
+            !urls.isEmpty && !FileDrop.isInside(urls, $0, during: info) ? $0 : nil
+        }
         let springs = folder.map { fileDelegate?.fileView(self, canSpringLoad: $0, during: info) == true } == true
         springLoader.hover(springs ? folder : nil, drag: info.draggingSequenceNumber)
         guard !urls.isEmpty else { return hideDropHighlight() }
@@ -160,7 +169,7 @@ extension FileItemCollection {
         }
         // Anywhere else drops into the folder being shown.
         guard directory != nil else { return hideDropHighlight() }
-        proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
+        proposedIndexPath.pointee = backgroundDropPath as NSIndexPath
         dropOperation.pointee = .before
         return dropIntoFolderShown(urls, info: info)
     }
@@ -175,10 +184,14 @@ extension FileItemCollection {
     func acceptDrop(_ info: NSDraggingInfo, indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
         endDrop()
         let urls = FileDrop.urls(info, copies: copies)
-        let index = indexPath.count == 2 ? indexPath.item : -1
-        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
-            ? entries[index].url : nil
+        guard !urls.isEmpty, entryIndex(at: indexPath) != nil || (dropOperation == .before && indexPath == backgroundDropPath) else { return false }
+        let folder = dropFolder(at: indexPath, operation: dropOperation)
         return fileDelegate?.fileView(self, drop: urls, onto: folder, info: info) ?? false
+    }
+
+    private func dropFolder(at path: IndexPath, operation: NSCollectionView.DropOperation) -> URL? {
+        guard operation == .on, let index = entryIndex(at: path), entries[index].isFolder else { return nil }
+        return entries[index].url
     }
 
     /// The drag left or ended: nothing highlighted, and no folder waiting to spring open.
@@ -195,9 +208,10 @@ extension FileItemCollection {
 
     /// The keyboard's lead once the selection is `selection`: it stays while it's selected, else it's the last item
     /// selected, so arrows never start from an item that isn't.
-    static func lead(_ lead: Int?, keptIn selection: Set<IndexPath>) -> Int? {
-        guard let lead, !selection.contains(IndexPath(item: lead, section: 0)) else { return lead }
-        return selection.map(\.item).max()
+    static func lead(_ lead: Int?, keptIn selection: Set<IndexPath>, index: (IndexPath) -> Int? = { $0.item }) -> Int? {
+        guard let lead else { return nil }
+        let indexes = selection.compactMap(index)
+        return indexes.contains(lead) ? lead : indexes.max()
     }
 
     /// Where renaming `url` starts: any rename under way cancelled, and the item, selected.

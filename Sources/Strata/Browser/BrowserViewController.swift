@@ -705,7 +705,7 @@ final class BrowserViewController: NSViewController {
         let appliedGeneration = generation
         // Metadata that arrived while filtered (sizes, say) orders the rows now.
         if text.isEmpty { scheduleResort() }
-        let selection = preservingSelection ? (pending.selection ?? selectedURLs) : (showsKindGroups ? selectedURLs : [])
+        let selection = preservingSelection ? (pending.selection ?? selectedURLs) : (groupedByKind ? selectedURLs : [])
         let requestedSelection = preservingSelection && pending.selection != nil
         let wasApplying = isApplyingListing
         if preservingSelection { isApplyingListing = true }
@@ -728,7 +728,12 @@ final class BrowserViewController: NSViewController {
             if !loading.hasPartialListing || pending.selection?.allSatisfy({ node(for: $0) != nil }) == true { pending.selection = nil }
             beginPendingRename()
             restoreListViewport(viewport)
-        } else if let first = rows.first(where: { $0.groupTitle == nil }), activeView != nil { activeView?.select([first.url], scroll: true) }
+        } else if let activeView {
+            let visibleKeys = groupedByKind ? Set(rows.map { $0.entry.locationKey }) : []
+            let kept = selection.filter { visibleKeys.contains(PathSpelling.short($0)) }
+            if !kept.isEmpty { activeView.select(kept, scroll: false) }
+            else if let first = rows.first(where: { $0.groupTitle == nil }) { activeView.select([first.url], scroll: true) }
+        }
         updateEmptyState()
         delegate?.browserContentDidChange(self)
     }

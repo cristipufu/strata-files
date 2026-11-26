@@ -39,7 +39,7 @@ final class FolderViewOptions: NSObject, ObservableObject {
 
     func chooseMode(_ mode: BrowserViewMode) { change { $0.mode = mode } }
     func chooseGrouping(_ grouping: FolderGrouping) {
-        guard presentation.mode == .list else { return }
+        guard presentation.mode.supportsKindGrouping else { return }
         change { $0.grouping = grouping }
     }
     func chooseSort(_ key: SortKey) { change { $0.sort = .init(key: key, ascending: $0.sort.ascending) } }

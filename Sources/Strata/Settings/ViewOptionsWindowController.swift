@@ -76,7 +76,7 @@ struct ViewOptionsView: View {
                 }.settingAnchor(.folderView)
                 Picker("Group By", selection: Binding(get: { folderOptions.presentation.grouping }, set: { folderOptions.chooseGrouping($0) })) {
                     ForEach(FolderGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
-                }.disabled(folderOptions.presentation.mode != .list).settingAnchor(.folderGrouping)
+                }.disabled(!folderOptions.presentation.mode.supportsKindGrouping).settingAnchor(.folderGrouping)
                 Picker("Sort By", selection: Binding(get: { folderOptions.presentation.sort.key }, set: { folderOptions.chooseSort($0) })) {
                     ForEach(SortKey.allCases, id: \.rawValue) { key in
                         Text(key == .name ? String(localized: "Name") : ListColumn(rawValue: key.rawValue)?.title ?? key.rawValue).tag(key)

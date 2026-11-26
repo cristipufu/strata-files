@@ -235,7 +235,7 @@ extension BrowserViewController: NSMenuItemValidation, PaneCommandState {
             return true
         case #selector(groupBy(_:)):
             guard let choice = (item.representedObject as? String).flatMap(FolderGrouping.init(rawValue:)) else { return false }
-            item.state = grouping == choice && effectiveMode == .list && !isShowingResults ? .on : .off
+            item.state = grouping == choice && canGroupByKind ? .on : .off
             return canGroupByKind
         case #selector(sortBy(_:)):
             let key = Self.sortMenuKeys.indices.contains(item.tag) ? Self.sortMenuKeys[item.tag].key.rawValue : ""

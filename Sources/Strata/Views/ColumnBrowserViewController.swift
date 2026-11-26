@@ -29,6 +29,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     var defaultColumnWidth: CGFloat = 230
     var previewColumnWidth: CGFloat = 290
 
+    private(set) var groupedByKind = false
     private(set) var root: URL?
     private(set) var location: URL?
     private var panes: [ColumnPane] = []
@@ -128,9 +129,12 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
         guard let directory = content.directory else { return }
+        let regroup = groupedByKind != content.groupedByKind
+        groupedByKind = content.groupedByKind
         sortComparator = metadata.ordered
         sortedBy = metadata.sortedBy
         setRoot(directory, entries: content.entries, matches: content.matches, complete: content.complete)
+        if regroup { for pane in panes.dropFirst() { pane.updateGrouping() } }
     }
 
     /// Shows `folder` in the first column with the browser's (filtered, sorted) entries. Calling again with the same
@@ -335,7 +339,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             if focusWhenLoaded === pane {
                 focusWhenLoaded = nil
                 if pane.entries.isEmpty == false {
-                    pane.selectRow(0)
+                    pane.selectFirstFile()
                     view.window?.makeFirstResponder(pane.tableView)
                 }
             }
@@ -375,7 +379,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             return
         }
         guard !next.entries.isEmpty else { return }
-        if next.tableView.selectedRow < 0 { next.selectRow(0) }
+        if next.tableView.selectedRow < 0 { next.selectFirstFile() }
         view.window?.makeFirstResponder(next.tableView)
         revealColumns(animated: true, pane: preview ?? panes.last)
     }
@@ -435,9 +439,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     func drop(_ urls: [URL], onto folder: URL, from pane: ColumnPane, info: NSDraggingInfo) -> Bool {
-        // A drop on the first column's background is a drop on the browser's folder.
-        let target: URL? = pane.isRoot && folder.fileViewKey == pane.folder.fileViewKey ? nil : folder
-        return fileDelegate?.fileView(self, drop: urls, onto: target, info: info) ?? false
+        guard panes.contains(where: { $0 === pane }) else { return false }
+        return fileDelegate?.fileView(self, drop: urls, onto: folder, info: info) ?? false
     }
 
     func resize(_ pane: ColumnPane, to width: CGFloat, all: Bool) {
@@ -522,10 +525,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     /// Metadata can arrive after a deeper column was sorted. Keep each column's selection and defer native editing.
     func resortLoadedColumns() {
-        for pane in panes.dropFirst() {
-            let sorted = pane.entries.sorted(by: sortComparator)
-            if sorted.map(\.url) != pane.entries.map(\.url) { pane.setEntries(sorted, matches: [:], partial: pane.hasPartialListing) }
-        }
+        for pane in panes.dropFirst() { pane.resort(using: sortComparator, snapshot: sortedBy) }
     }
 
     /// Row height and text size changed (Settings ▸ Appearance).
@@ -563,8 +563,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         if let existing = renameField {
             existing.cancel()
         }
-        guard let pane = panes.last(where: { $0.row(for: url) != nil }), let row = pane.row(for: url) else { return false }
-        let entry = pane.entries[row]
+        guard let pane = panes.last(where: { $0.row(for: url) != nil }), let row = pane.row(for: url),
+              let entry = pane.entry(at: row) else { return false }
         pane.tableView.scrollRowToVisible(row)
         guard let cell = pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView else { return false }
         let font = pane.typography.font

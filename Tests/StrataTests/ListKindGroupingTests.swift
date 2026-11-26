@@ -165,7 +165,7 @@ import Testing
         let store = FolderViewSettings(preferences: Prefs(defaults: reopened, domainName: prefs.domainName))
         #expect(store.defaults.grouping == .kind && store.stored(for: folder)?.grouping == .kind)
         first.setMode(.grid)
-        #expect(!first.validateMenuItem(StrataCommand.groupBy(.kind).menuItem()))
+        #expect(first.validateMenuItem(StrataCommand.groupBy(.kind).menuItem()))
         #expect(headings(first).isEmpty)
         first.setMode(.list)
         #expect(headings(first).map(\.kind) == [.pdfs])

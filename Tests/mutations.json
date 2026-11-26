@@ -4921,7 +4921,7 @@
   },
   {
     "file": "Strata/Views/ColumnPane.swift",
-    "find": "guard let deferred else { refreshVisibleRows(); return }",
+    "find": "guard let deferred else { updateGrouping(); refreshVisibleRows(); return }",
     "replace": "guard let deferred else { return }",
     "rule": "Rename refresh follow-up: Columns cancellation refreshes postponed metadata",
     "tests": "DirectoryReadSessionTests"
@@ -8473,6 +8473,41 @@
     "tests": "DuplicateFinderTests/closingAPaneReleasesItsSearchWhileAnIndexReadIsHeld"
   },
   {
+    "file": "Strata/Views/FileKindSections.swift",
+    "rule": "Kind grouping across views: a drag from item zero in a later icon section keeps its own file",
+    "find": "return range.lowerBound + path.item",
+    "replace": "return path.item",
+    "tests": "FolderKindPresentationTests/gridCommandsResolveTheFirstFileInEachNativeSection"
+  },
+  {
+    "file": "Strata/Views/GridViewController.swift",
+    "rule": "Kind grouping across views: an icon heading refuses a dropped file",
+    "find": "if layout.isHeading(at: collectionView.convert(draggingInfo.draggingLocation, from: nil)) { endDrop(); return false }",
+    "replace": "// Accept the heading as a file destination.",
+    "tests": "FolderKindPresentationTests/gridCommandsResolveTheFirstFileInEachNativeSection"
+  },
+  {
+    "file": "Strata/Views/ColumnPane.swift",
+    "rule": "Kind grouping across views: a column heading refuses a dropped file",
+    "find": "guard !urls.isEmpty, acceptsDrop(at: row, operation: dropOperation) else { return false }",
+    "replace": "// Accept the heading as the background.",
+    "tests": "FolderKindPresentationTests/nestedColumnsRegroupAndKeepKeyboardRenameAndDropsBoundToTheirFiles"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "rule": "Kind grouping across views: a background drop belongs to the receiving column even when focus is deeper",
+    "find": "return fileDelegate?.fileView(self, drop: urls, onto: folder, info: info) ?? false",
+    "replace": "return fileDelegate?.fileView(self, drop: urls, onto: pane.isRoot ? nil : folder, info: info) ?? false",
+    "tests": "FolderKindPresentationTests/aDropIntoTheRootColumnUsesItsFolderWhileADeeperColumnHasFocus"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "rule": "Kind grouping across views: a grouped rename addresses the file at its displayed row",
+    "find": "let entry = pane.entry(at: row) else { return false }",
+    "replace": "let entry = pane.entries.first else { return false }",
+    "tests": "FolderKindPresentationTests/renamingTheFirstPDFInAGroupChangesOnlyThatFileAndHistoryRestoresIt"
+  },
+  {
     "file": "Strata/Browser/BrowserViewController+Menus.swift",
     "rule": "Folder kind groups: accepting a drop on a heading must never transfer into the displayed directory",
     "find": "dropTarget = item == nil && !isShowingResults ? directory : nil",
@@ -8482,7 +8517,7 @@
   {
     "file": "Strata/Browser/BrowserViewController.swift",
     "rule": "Folder kind groups: filtering retains the actual files selected across sections",
-    "find": "let selection = preservingSelection ? (pending.selection ?? selectedURLs) : (showsKindGroups ? selectedURLs : [])",
+    "find": "let selection = preservingSelection ? (pending.selection ?? selectedURLs) : (groupedByKind ? selectedURLs : [])",
     "replace": "let selection = preservingSelection ? (pending.selection ?? selectedURLs) : []",
     "tests": "ListKindGroupingTests/kindsShareAHeadingAndKeepTheChosenFilesThroughFilteringSortingAndRefresh"
   },

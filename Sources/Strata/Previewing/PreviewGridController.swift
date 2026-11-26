@@ -61,6 +61,7 @@ import AppKit
         isActive = true
         self.items = items
         applying = true
+        layout.sections = [.init(kind: nil, files: items.indices)]
         collection.reloadData()
         applying = false
         select(selected)
@@ -99,6 +100,7 @@ import AppKit
         archiveThumbnails?.cancelAll()
         items = []
         applying = true
+        layout.sections = [.init(kind: nil, files: items.indices)]
         collection.reloadData()
         applying = false
     }

@@ -38,11 +38,13 @@ extension BrowserViewController {
         guard canCustomizeFolderPresentation else { return }
         var value = folderPresentation
         update(&value)
+        let regroup = grouping != value.grouping
         grouping = value.grouping
         if value.iconSize != iconSize { setIconSize(value.iconSize, remember: false) }
         if value.mode != mode { setMode(value.mode, remember: false) }
         if ordering.choice != value.sort { applySort(value.sort.key, ascending: value.sort.ascending, remember: false) }
         updateListGrouping()
+        if regroup { pushContent() }
         rememberFolderPresentation()
         folderOptions?.refresh()
     }
@@ -50,6 +52,7 @@ extension BrowserViewController {
     func restoreFolderPresentation(at folder: URL, showing: Bool) {
         let canRemember = canSaveFolderView(at: folder)
         var saved = canRemember ? services.folderViews.presentation(for: folder) : services.folderViews.defaults
+        let previousGrouping = grouping
         grouping = canRemember ? saved.grouping : .none
         if let initialMode { saved.mode = initialMode }
         if let initialSort { saved.sort = initialSort }
@@ -58,6 +61,7 @@ extension BrowserViewController {
             setMode(saved.mode, remember: false)
             if ordering.choice != saved.sort { applySort(saved.sort.key, ascending: saved.sort.ascending, remember: false) }
             updateListGrouping()
+            if grouping != previousGrouping { pushContent() }
         } else {
             setStoredMode(saved.mode)
             ordering.choose(saved.sort, remember: false)

@@ -13,7 +13,7 @@ final class FileDrag: NSObject, NSDraggingInfo, DragKeys {
     let optionHeld: Bool
     let draggingSequenceNumber: Int
     var draggingDestinationWindow: NSWindow? { nil }
-    var draggingLocation: NSPoint { .zero }
+    var draggingLocation: NSPoint = .zero
     var draggedImageLocation: NSPoint { .zero }
     nonisolated var draggedImage: NSImage? { nil }
     var draggingSource: Any?

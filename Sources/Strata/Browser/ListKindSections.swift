@@ -13,19 +13,18 @@ final class ListKindSections {
 
     func update(_ files: [FileNode], grouped: Bool) {
         guard grouped else { roots = nil; return }
-        let members = Dictionary(grouping: files) { $0.entry.kindGroup }
+        let sections = FileKindGroup.sections(files, by: { $0.entry.kindGroup })
         var ordered: [AnyObject] = []
-        ordered.reserveCapacity(files.count + members.count)
-        for heading in headings {
-            guard let files = members[heading.kind] else { continue }
-            ordered.append(heading)
+        ordered.reserveCapacity(files.count + sections.count)
+        for (kind, files) in sections {
+            ordered.append(headings[kind.rawValue])
             ordered.append(contentsOf: files)
         }
         roots = ordered
     }
 
     func viewportKey(_ item: Any?) -> String? {
-        if let heading = item as? ListKindHeading { return "kind.\(heading.kind.rawValue)" }
+        if let heading = item as? ListKindHeading { return heading.kind.viewportKey }
         return (item as? FileNode)?.entry.locationKey
     }
 
@@ -36,8 +35,9 @@ final class ListKindSections {
 }
 
 extension BrowserViewController {
-    var canGroupByKind: Bool { effectiveMode == .list && canCustomizeFolderPresentation }
-    var showsKindGroups: Bool { grouping == .kind && effectiveMode == .list && !isShowingResults }
+    var canGroupByKind: Bool { effectiveMode.supportsKindGrouping && canCustomizeFolderPresentation }
+    var groupedByKind: Bool { grouping == .kind && effectiveMode.supportsKindGrouping && !isShowingResults }
+    var showsKindGroups: Bool { groupedByKind && effectiveMode == .list }
 
     @objc func groupBy(_ sender: NSMenuItem) {
         guard canGroupByKind, let raw = sender.representedObject as? String, let grouping = FolderGrouping(rawValue: raw) else { return }

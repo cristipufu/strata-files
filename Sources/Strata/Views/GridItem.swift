@@ -502,3 +502,31 @@ final class GridItem: NSCollectionViewItem {
         return components
     }
 }
+
+/// A supplementary view has no selectable item or file URL.
+final class GridKindHeading: NSView, NSCollectionViewElement {
+    static let identifier = NSUserInterfaceItemIdentifier("gridKindHeading")
+    private let label = NSTextField(labelWithString: "")
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addSubview(label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        label.setAccessibilityRole(NSAccessibility.Role(rawValue: "AXHeading"))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ kind: FileKindGroup?, typography: FileViewTypography) {
+        label.stringValue = kind?.title ?? ""
+        setHeadingFont(typography.bold)
+    }
+
+    func setHeadingFont(_ font: NSFont) { label.font = font }
+}

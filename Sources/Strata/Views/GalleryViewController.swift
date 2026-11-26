@@ -251,7 +251,7 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
             return
         }
         let selection = Set(selectedURLs)
-        let viewport = CollectionViewport.capture(strip, entries: self.entries)
+        let viewport = CollectionViewport.capture(strip) { entryIndex(at: $0).map { self.entries[$0].url.fileViewKey } }
         let leadURL = lead.flatMap { $0 < self.entries.count ? self.entries[$0].url : nil }
         let insertions = incremental ? FileInsertions.plan(from: self.entries, to: entries) : nil
         self.entries = entries
@@ -266,7 +266,7 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
         let newLead = leadURL.flatMap { indexByKey[$0.fileViewKey] } ?? kept.min()
         // A refresh (a download growing, say) leaves the strip where you scrolled it.
         if leadURL.flatMap({ indexByKey[$0.fileViewKey] }) == nil, let newLead { scrollToItem(newLead) }
-        else { viewport?.restore(in: strip) { indexByKey[$0] } }
+        else { viewport?.restore(in: strip) { indexByKey[$0].map { IndexPath(item: $0, section: 0) } } }
         lead = newLead
         anchor = lead
         reportSelection()

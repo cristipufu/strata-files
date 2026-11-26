@@ -115,7 +115,7 @@ extension BrowserViewController {
             }
             details = FileCollectionDetails(groups: groups, copies: services.copies)
         }
-        let content = FileCollectionContent(complete: !loading.hasPartialListing, directory: directory, entries: shown.map(\.entry), matches: matches, details: details)
+        let content = FileCollectionContent(groupedByKind: groupedByKind, complete: !loading.hasPartialListing, directory: directory, entries: shown.map(\.entry), matches: matches, details: details)
         let diskSizeReader: (@MainActor (FileEntry) -> DiskSizeMeasurement)?
         if directory == nil || directory.map(services.copies.contains) == true || directory.flatMap(ArchiveCache.archive(containing:)) != nil {
             diskSizeReader = nil

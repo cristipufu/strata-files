@@ -51,99 +51,151 @@ fileprivate extension CGFloat {
 /// an insertion point, since a file grid has no manual ordering.
 final class GridLayout: NSCollectionViewLayout {
     var metrics = GridMetrics(iconSize: 64, typography: .standard)
-    var itemCount = 0
+    var sections: [FileKindSections.Section] = [] {
+        didSet { measureSections(); invalidateLayout() }
+    }
     var insets = NSEdgeInsets(top: 10, left: 14, bottom: 18, right: 14)
     var rowSpacing: CGFloat = 2
-
     private(set) var columns = 1
-    private(set) var cellWidth: CGFloat = 100
+    private var cellWidth: CGFloat = 100
     private var lastWidth: CGFloat = 0
 
+    private struct Band {
+        let files: Range<Int>
+        let header: NSRect?
+        let startY: CGFloat
+        let rows: Int
+    }
+    private var bands: [Band] = []
+    private var contentHeight: CGFloat = 0
+    private var pitch: CGFloat { metrics.itemHeight + rowSpacing }
     private var width: CGFloat {
         let value = collectionView?.enclosingScrollView?.contentView.bounds.width ?? collectionView?.bounds.width ?? 0
         return value.isFinite ? max(value, 0) : 0
     }
+    private var left: CGFloat {
+        let slack = max(width - insets.left - insets.right - cellWidth * CGFloat(columns), 0)
+        return insets.left + (slack / 2).rounded(.down)
+    }
 
     override func prepare() {
         super.prepare()
-        itemCount = collectionView.map { $0.numberOfSections > 0 ? $0.numberOfItems(inSection: 0) : 0 } ?? 0
         let available = max(width - insets.left - insets.right, metrics.minCellWidth)
-        let proposedColumns = available / metrics.minCellWidth
-        columns = max(1, Int(exactly: floor(proposedColumns)) ?? 1)
+        columns = max(1, Int(exactly: floor(available / metrics.minCellWidth)) ?? 1)
         cellWidth = floor(available / CGFloat(columns))
         lastWidth = width
+        measureSections()
     }
 
-    var rows: Int { itemCount == 0 ? 0 : (itemCount - 1) / columns + 1 }
-    var rowHeight: CGFloat { metrics.itemHeight }
-
-    override var collectionViewContentSize: NSSize {
-        let height = insets.top + CGFloat(rows) * rowHeight + CGFloat(max(rows - 1, 0)) * rowSpacing + insets.bottom
-        return NSSize(width: width, height: height)
+    private func measureSections() {
+        var y = insets.top
+        bands = sections.map { section in
+            let header = section.kind.map { _ in NSRect(x: insets.left, y: y,
+                width: max(0, width - insets.left - insets.right), height: metrics.lineHeight + 12) }
+            if let header { y = header.maxY }
+            let rows = section.files.isEmpty ? 0 : (section.files.count - 1) / columns + 1
+            let band = Band(files: section.files, header: header, startY: y, rows: rows)
+            y += CGFloat(rows) * pitch
+            return band
+        }
+        contentHeight = max(y - rowSpacing, insets.top) + insets.bottom
     }
+
+    override var collectionViewContentSize: NSSize { NSSize(width: width, height: contentHeight) }
 
     func frame(for index: Int) -> NSRect {
-        let row = index / columns, column = index % columns
-        let available = width - insets.left - insets.right
-        // Distribute leftover pixels from flooring evenly so the grid stays centered.
-        let slack = max(available - cellWidth * CGFloat(columns), 0)
-        let x = insets.left + (slack / 2).rounded(.down) + CGFloat(column) * cellWidth
-        let y = insets.top + CGFloat(row) * (rowHeight + rowSpacing)
-        return NSRect(x: x, y: y, width: cellWidth, height: rowHeight)
+        guard let band = bands.first(where: { $0.files.contains(index) }) else { return .zero }
+        let local = index - band.files.lowerBound
+        return NSRect(x: left + CGFloat(local % columns) * cellWidth, y: band.startY + CGFloat(local / columns) * pitch,
+                      width: cellWidth, height: metrics.itemHeight)
     }
 
     func index(at point: NSPoint) -> Int? {
-        guard itemCount > 0, point.x.isFinite, point.y.isFinite else { return nil }
-        let available = width - insets.left - insets.right
-        let slack = max(available - cellWidth * CGFloat(columns), 0)
-        let proposedColumn = floor((point.x - insets.left - (slack / 2).rounded(.down)) / cellWidth)
-        let proposedRow = floor((point.y - insets.top) / (rowHeight + rowSpacing))
-        guard proposedColumn >= 0, proposedColumn < CGFloat(columns),
-              proposedRow >= 0, proposedRow < CGFloat(rows) else { return nil }
-        let column = Int(proposedColumn), row = Int(proposedRow)
-        let index = row * columns + column
-        guard index < itemCount, frame(for: index).contains(point) else { return nil }
-        return index
+        let col = floor((point.x - left) / cellWidth)
+        guard col >= 0, col < CGFloat(columns) else { return nil }
+        for band in bands {
+            let row = floor((point.y - band.startY) / pitch)
+            guard row >= 0, row < CGFloat(band.rows) else { continue }
+            let index = band.files.lowerBound + Int(row) * columns + Int(col)
+            if band.files.contains(index), frame(for: index).contains(point) { return index }
+        }
+        return nil
     }
 
-    /// Items whose rows intersect `rect`.
+    /// Visible file indexes are contiguous across section boundaries, even across a short last row.
     func indexes(in rect: NSRect) -> Range<Int> {
-        guard itemCount > 0, !rect.isNull, !rect.minY.isNaN, !rect.maxY.isNaN else { return 0..<0 }
-        let pitch = rowHeight + rowSpacing
-        let firstRow = floor((rect.minY - insets.top) / pitch)
-        let lastRow = floor((rect.maxY - insets.top) / pitch)
-        guard lastRow >= 0, firstRow < CGFloat(rows) else { return 0..<0 }
-        // AppKit may request an unbounded rectangle. Clamp before converting to integer coordinates.
-        let first = Int(max(firstRow, 0))
-        let last = Int(min(max(lastRow, firstRow), CGFloat(rows - 1)))
-        let lower = first * columns
-        let upper = last == rows - 1 ? itemCount : (last + 1) * columns
-        return lower..<upper
+        guard !rect.isNull, !rect.minY.isNaN, !rect.maxY.isNaN else { return 0..<0 }
+        var first: Int?, end = 0
+        for band in bands where band.rows > 0 {
+            let lower = max(0, floor((rect.minY - band.startY) / pitch))
+            let upper = min(CGFloat(band.rows - 1), floor((rect.maxY - band.startY) / pitch))
+            guard lower <= upper else { continue }
+            if first == nil { first = band.files.lowerBound + Int(lower) * columns }
+            end = min(band.files.upperBound, band.files.lowerBound + (Int(upper) + 1) * columns)
+        }
+        return (first ?? end)..<end
     }
+
+    func verticalNeighbor(of index: Int, down: Bool) -> Int {
+        guard let section = bands.firstIndex(where: { $0.files.contains(index) }) else { return index }
+        let band = bands[section], local = index - band.files.lowerBound
+        let row = local / columns + (down ? 1 : -1)
+        if (0..<band.rows).contains(row) {
+            return min(band.files.upperBound - 1, band.files.lowerBound + row * columns + local % columns)
+        }
+        let next = section + (down ? 1 : -1)
+        guard bands.indices.contains(next) else { return index }
+        let neighbor = bands[next]
+        let start = neighbor.files.lowerBound + (down ? 0 : neighbor.rows - 1) * columns
+        return min(neighbor.files.upperBound - 1, start + local % columns)
+    }
+
+    func isHeading(at point: NSPoint) -> Bool { bands.contains { $0.header?.contains(point) == true } }
 
     override func layoutAttributesForElements(in rect: NSRect) -> [NSCollectionViewLayoutAttributes] {
-        indexes(in: rect).map { attributes(for: $0) }
+        var result = indexes(in: rect).compactMap { index -> NSCollectionViewLayoutAttributes? in
+            guard let section = bands.firstIndex(where: { $0.files.contains(index) }) else { return nil }
+            return attributes(for: index, section: section)
+        }
+        for (section, band) in bands.enumerated() where band.header?.intersects(rect) == true {
+            if let header = layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionHeader,
+                                                                  at: IndexPath(item: 0, section: section)) { result.append(header) }
+        }
+        return result
+    }
+
+    override func layoutAttributesForSupplementaryView(ofKind elementKind: NSCollectionView.SupplementaryElementKind,
+                                                         at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
+        guard elementKind == NSCollectionView.elementKindSectionHeader, indexPath.count == 2,
+              bands.indices.contains(indexPath.section), let frame = bands[indexPath.section].header else { return nil }
+        let attributes = NSCollectionViewLayoutAttributes(forSupplementaryViewOfKind: elementKind, with: indexPath)
+        attributes.frame = frame
+        return attributes
     }
 
     override func layoutAttributesForItem(at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
-        guard indexPath.count == 2, indexPath.item >= 0, indexPath.item < itemCount else { return nil }
-        return attributes(for: indexPath.item)
+        guard indexPath.count == 2, bands.indices.contains(indexPath.section) else { return nil }
+        let range = bands[indexPath.section].files
+        guard indexPath.item >= 0, indexPath.item < range.count else { return nil }
+        return attributes(for: range.lowerBound + indexPath.item, section: indexPath.section)
     }
 
-    private func attributes(for index: Int) -> NSCollectionViewLayoutAttributes {
-        let attributes = NSCollectionViewLayoutAttributes(forItemWith: IndexPath(item: index, section: 0))
+    private func attributes(for index: Int, section: Int) -> NSCollectionViewLayoutAttributes {
+        let path = IndexPath(item: index - bands[section].files.lowerBound, section: section)
+        let attributes = NSCollectionViewLayoutAttributes(forItemWith: path)
         attributes.frame = frame(for: index)
         return attributes
     }
 
     override func layoutAttributesForDropTarget(at pointInCollectionView: NSPoint) -> NSCollectionViewLayoutAttributes? {
-        if let index = index(at: pointInCollectionView) { return attributes(for: index) }
-        let gap = NSCollectionViewLayoutAttributes(forInterItemGapBefore: IndexPath(item: itemCount, section: 0))
+        if let index = index(at: pointInCollectionView), let section = bands.firstIndex(where: { $0.files.contains(index) }) {
+            return attributes(for: index, section: section)
+        }
+        guard let last = bands.indices.last else { return nil }
+        let gap = NSCollectionViewLayoutAttributes(forInterItemGapBefore: IndexPath(item: bands[last].files.count, section: last))
         gap.frame = .zero
         return gap
     }
 
-    override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool {
-        abs(newBounds.width - lastWidth) > 0.5
-    }
+    override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool { abs(newBounds.width - lastWidth) > 0.5 }
 }

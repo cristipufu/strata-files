@@ -99,12 +99,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let heading = item as? ListKindHeading {
-            let id = NSUserInterfaceItemIdentifier("kindHeading")
-            let label = outlineView.makeView(withIdentifier: id, owner: nil) as? NSTextField ?? NSTextField(labelWithString: "")
-            label.identifier = id
-            label.font = listTypography.bold
-            label.stringValue = heading.kind.title
-            return label
+            return heading.kind.heading(in: outlineView, font: listTypography.bold)
         }
         guard let node = item as? FileNode else { return nil }
         if let title = node.groupTitle {
@@ -230,6 +225,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         listing.sort(using: sort)
         reloadList()
         pushContent()
+        if effectiveMode == .columns { columnController?.resortLoadedColumns() }
         select(selection, scroll: false)
         if loading.hasPartialListing { refresh() }
     }

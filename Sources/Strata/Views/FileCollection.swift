@@ -87,6 +87,7 @@ extension FileCollectionViewDelegate {
 
 /// Sorted, filtered files for a presentation. Results have no destination folder; details identify their origins.
 struct FileCollectionContent {
+    var groupedByKind = false
     var complete = true
     let directory: URL?
     let entries: [FileEntry]
@@ -175,6 +176,8 @@ enum BrowserViewMode: Int, CaseIterable {
     case list, grid, columns, treemap, gallery
 
     static let ordered: [BrowserViewMode] = [.grid, .list, .columns, .gallery, .treemap]
+    var supportsKindGrouping: Bool { self == .list || self == .grid || self == .columns }
+
     /// Index in `ordered` (toolbar segment, and ⌘ number minus one).
     var position: Int { Self.ordered.firstIndex(of: self) ?? 0 }
 

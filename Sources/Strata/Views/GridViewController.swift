@@ -45,7 +45,13 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         set { setIconSize(newValue, animated: false) }
     }
 
-    private(set) var entries: [FileEntry] = []
+    private var sections = FileKindSections()
+    var entries: [FileEntry] { sections.entries }
+    func entryIndex(at path: IndexPath) -> Int? { sections.index(at: path) }
+    var backgroundDropPath: IndexPath {
+        let last = sections.sections.indices.last ?? 0
+        return IndexPath(item: sections.sections.last?.files.count ?? 0, section: last)
+    }
     private var matches: [String: [Int]] = [:]
     private var details: FileCollectionDetails?
     private var indexByKey: [String: Int] = [:]
@@ -57,7 +63,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     /// Opens the folder a drag rests on (only one still shown).
     lazy var springLoader = SpringLoader(view: collectionView, frame: { [weak self] folder in
         guard let self, let index = indexByKey[folder.fileViewKey] else { return nil }
-        return collectionView.frameForItem(at: index)
+        return layout.frame(for: index)
     }, open: { [weak self] folder, drag in
         guard let self, indexByKey[folder.fileViewKey] != nil else { return }
         fileDelegate?.fileView(self, springLoad: folder, drag: drag)
@@ -69,7 +75,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         fileDelegate?.fileView(self, selectionDidChange: urls)
     }
     private var renameField: InlineRenameField?
-    private var deferredEntries: ([FileEntry], [URL: [Int]])?
+    private var deferredEntries: ([FileEntry], [URL: [Int]], Bool)?
     private var thumbnailRefresh: DispatchWorkItem?
 
     var focusView: NSView { collectionView }
@@ -84,6 +90,8 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         cv.allowsEmptySelection = true
         cv.backgroundColors = [.controlBackgroundColor]
         ThemeStyle.bind(cv, to: .content)
+        cv.register(GridKindHeading.self, forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader,
+                    withIdentifier: GridKindHeading.identifier)
         cv.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
         cv.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
         cv.host = self
@@ -122,28 +130,29 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         if directory?.fileViewKey != content.directory?.fileViewKey { cancelRename() }
         directory = content.directory
         details = content.details
-        setEntries(content.entries, matches: content.matches, incremental: !content.complete || hasPartialListing)
+        setEntries(content.entries, matches: content.matches, grouped: content.groupedByKind, incremental: !content.complete || hasPartialListing)
         hasPartialListing = !content.complete
     }
 
     /// Shows `entries` in the given order. `matches` holds fuzzy-match character offsets per URL for highlighting.
     /// Selection is kept for items that are still present.
     private var hasPartialListing = false
-    func setEntries(_ entries: [FileEntry], matches: [URL: [Int]] = [:], incremental: Bool = false) {
+    func setEntries(_ entries: [FileEntry], matches: [URL: [Int]] = [:], grouped: Bool = false, incremental: Bool = false) {
         loadViewIfNeeded()
         // A refresh while renaming would reload under the field; apply it once the rename ends.
         if renameField != nil {
-            deferredEntries = (entries, matches)
+            deferredEntries = (entries, matches, grouped)
             return
         }
         let selection = Set(selectedURLs)
-        let viewport = opensAtTop ? nil : CollectionViewport.capture(collectionView, entries: self.entries)
+        let viewport = opensAtTop ? nil : CollectionViewport.capture(collectionView) { entryIndex(at: $0).map { self.entries[$0].url.fileViewKey } }
         let leadURL = lead.flatMap { $0 < self.entries.count ? self.entries[$0].url : nil }
-        let insertions = incremental && !opensAtTop ? FileInsertions.plan(from: self.entries, to: entries) : nil
-        self.entries = entries
+        let insertions = incremental && !opensAtTop && !grouped && !sections.grouped ? FileInsertions.plan(from: self.entries, to: entries) : nil
+        sections = FileKindSections(entries, grouped: grouped)
+        layout.sections = sections.sections
         self.matches = Dictionary(matches.map { ($0.key.fileViewKey, $0.value) }, uniquingKeysWith: { a, _ in a })
         indexByKey.removeAll(keepingCapacity: true)
-        for (i, entry) in entries.enumerated() { indexByKey[entry.url.fileViewKey] = i }
+        for (i, entry) in self.entries.enumerated() { indexByKey[entry.url.fileViewKey] = i }
         if let insertions {
             collectionView.insertItems(at: Set(insertions.map { IndexPath(item: $0, section: 0) }))
         } else { collectionView.reloadData() }
@@ -154,25 +163,25 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
             scrollView.reflectScrolledClipView(clip)
         }
         let kept = selection.compactMap { indexByKey[$0.fileViewKey] }
-        collectionView.selectionIndexPaths = Set(kept.map { IndexPath(item: $0, section: 0) })
+        collectionView.selectionIndexPaths = Set(kept.compactMap(sections.path))
         lead = leadURL.flatMap { indexByKey[$0.fileViewKey] } ?? kept.min()
         anchor = lead
-        viewport?.restore(in: collectionView) { indexByKey[$0] }
+        viewport?.restore(in: collectionView) { indexByKey[$0].flatMap(sections.path) }
         reportSelection()
     }
 
     /// Re-reads one item (its entry changed, or its folder size/info did).
     func reloadItems(_ urls: [URL]) {
-        let paths = Set(urls.compactMap { indexByKey[$0.fileViewKey] }.map { IndexPath(item: $0, section: 0) })
+        let paths = Set(urls.compactMap { indexByKey[$0.fileViewKey] }.compactMap(sections.path))
         guard !paths.isEmpty else { return }
         for path in paths {
-            guard let item = collectionView.item(at: path) as? GridItem else { continue }
-            configure(item, at: path.item)
+            guard let index = entryIndex(at: path), let item = collectionView.item(at: path) as? GridItem else { continue }
+            configure(item, at: index)
         }
     }
 
     var selectedIndexes: [Int] {
-        collectionView.selectionIndexPaths.map(\.item).sorted()
+        collectionView.selectionIndexPaths.compactMap(entryIndex).sorted()
     }
 
     var selectedEntries: [FileEntry] {
@@ -181,7 +190,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
 
     func select(_ urls: [URL], scroll: Bool = true) {
         let indexes = urls.compactMap { indexByKey[$0.fileViewKey] }
-        collectionView.selectionIndexPaths = Set(indexes.map { IndexPath(item: $0, section: 0) })
+        collectionView.selectionIndexPaths = Set(indexes.compactMap(sections.path))
         lead = indexes.first
         anchor = lead
         if scroll, let first = indexes.min() { scrollToItem(first) }
@@ -189,8 +198,8 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     }
 
     func screenRect(for url: URL) -> NSRect? {
-        guard let index = index(of: url), let window = view.window,
-              let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return nil }
+        guard let index = index(of: url), let window = view.window, let path = sections.path(for: index),
+              let item = collectionView.item(at: path) as? GridItem else { return nil }
         let rect = item.itemView.convert(item.itemView.iconRect, to: nil)
         guard collectionView.visibleRect.intersects(collectionView.convert(rect, from: nil)) else { return nil }
         return window.convertToScreen(rect)
@@ -213,8 +222,8 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         let apply = {
             self.layout.invalidateLayout()
             for case let item as GridItem in self.collectionView.visibleItems() {
-                guard let path = self.collectionView.indexPath(for: item) else { continue }
-                self.configure(item, at: path.item, refreshImage: false)
+                guard let path = self.collectionView.indexPath(for: item), let index = self.entryIndex(at: path) else { continue }
+                self.configure(item, at: index, refreshImage: false)
             }
         }
         if animated {
@@ -245,6 +254,9 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         let size = layout.metrics.iconSize
         layout.metrics = GridMetrics(iconSize: size, typography: FileViewTypography(preferences: preferences))
         layout.invalidateLayout()
+        for case let heading as GridKindHeading in collectionView.visibleSupplementaryViews(ofKind: NSCollectionView.elementKindSectionHeader) {
+            heading.setHeadingFont(layout.metrics.typography.bold)
+        }
         refreshVisibleItems(reconfigure: true)
     }
 
@@ -293,8 +305,8 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     func refreshVisibleItems(reconfigure: Bool = false, paths: Set<String>? = nil) {
         for case let item as GridItem in collectionView.visibleItems() {
             if let paths, !paths.contains(item.entry?.url.path ?? "") { continue }
-            if reconfigure, let path = collectionView.indexPath(for: item) {
-                configure(item, at: path.item)
+            if reconfigure, let path = collectionView.indexPath(for: item), let index = entryIndex(at: path) {
+                configure(item, at: index)
             } else {
                 if let entry = item.entry {
                     let git = statuses.git
@@ -324,36 +336,29 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     /// Arrow-key movement in the grid; `extend` grows the selection from the anchor (Shift).
     fileprivate func move(_ direction: GridCollectionView.Direction, extend: Bool) {
         guard !entries.isEmpty else { return }
-        let columns = layout.columns
         let current = lead ?? selectedIndexes.last
         var next: Int
         if let current {
             switch direction {
             case .left: next = max(current - 1, 0)
             case .right: next = min(current + 1, entries.count - 1)
-            case .up: next = current - columns >= 0 ? current - columns : current
-            case .down:
-                if current + columns < entries.count {
-                    next = current + columns
-                } else if current / columns < (entries.count - 1) / columns {
-                    next = entries.count - 1 // a shorter last row: land on its last item, like Finder
-                } else {
-                    next = current
-                }
+            case .up: next = layout.verticalNeighbor(of: current, down: false)
+            case .down: next = layout.verticalNeighbor(of: current, down: true)
             case .home: next = 0
             case .end: next = entries.count - 1
             }
         } else {
             next = direction == .end || direction == .up || direction == .left ? entries.count - 1 : 0
         }
+        guard let nextPath = sections.path(for: next) else { return }
         if extend {
             let anchor = self.anchor ?? current ?? next
             self.anchor = anchor
             let range = min(anchor, next)...max(anchor, next)
-            collectionView.selectionIndexPaths = Set(range.map { IndexPath(item: $0, section: 0) })
+            collectionView.selectionIndexPaths = Set(range.compactMap(sections.path))
         } else {
             anchor = next
-            collectionView.selectionIndexPaths = [IndexPath(item: next, section: 0)]
+            collectionView.selectionIndexPaths = [nextPath]
         }
         lead = next
         scrollToItem(next)
@@ -369,15 +374,16 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     /// The item whose icon or name is at `point`; the rest of a cell is empty space, as for a click.
     func itemIndex(at point: NSPoint) -> Int? {
         guard let index = layout.index(at: point), entries.indices.contains(index),
-              let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem,
+              let path = sections.path(for: index), let item = collectionView.item(at: path) as? GridItem,
               item.itemView.covers(item.itemView.convert(point, from: collectionView)) else { return nil }
         return index
     }
 
     func contextMenu(at point: NSPoint) -> NSMenu? {
-        if let index = itemIndex(at: point) {
-            if !collectionView.selectionIndexPaths.contains(IndexPath(item: index, section: 0)) {
-                collectionView.selectionIndexPaths = [IndexPath(item: index, section: 0)]
+        if layout.isHeading(at: point) { return nil }
+        if let index = itemIndex(at: point), let path = sections.path(for: index) {
+            if !collectionView.selectionIndexPaths.contains(path) {
+                collectionView.selectionIndexPaths = [path]
                 lead = index
                 anchor = index
             }
@@ -406,11 +412,11 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     /// rename). The name's area is its lines as drawn, so a click on the icon only selects.
     fileprivate func nameClicked(_ event: NSEvent) -> URL? {
         guard ClickToRename.isPlainClickInFocus(event, on: collectionView) else { return nil }
-        let path = layout.index(at: collectionView.convert(event.locationInWindow, from: nil)).map { IndexPath(item: $0, section: 0) }
-        guard let path, collectionView.selectionIndexPaths == [path], path.item < entries.count,
+        guard let index = layout.index(at: collectionView.convert(event.locationInWindow, from: nil)),
+              let path = sections.path(for: index), collectionView.selectionIndexPaths == [path],
               let item = collectionView.item(at: path) as? GridItem,
               item.itemView.nameRect.contains(item.itemView.convert(event.locationInWindow, from: nil)) else { return nil }
-        return entries[path.item].url
+        return entries[index].url
     }
 
     fileprivate func renameClicked(_ url: URL) {
@@ -424,7 +430,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     /// in the empty part of a cell as well: the lead then only stays among what is selected.
     func noteSelection(byMouseDownAt point: NSPoint?) {
         guard let index = point.flatMap(itemIndex(at:)) else {
-            lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths)
+            lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths, index: entryIndex)
             return
         }
         lead = index
@@ -443,7 +449,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     func beginRename(_ url: URL) -> Bool {
         guard let (index, entry) = prepareRename(url) else { return false }
         collectionView.layoutSubtreeIfNeeded()
-        guard let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return false }
+        guard let path = sections.path(for: index), let item = collectionView.item(at: path) as? GridItem else { return false }
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, font: layout.metrics.typography.font)
         let area = item.itemView.nameAreaRect
         let width = area.width + 10
@@ -464,9 +470,9 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
             guard let self else { return }
             self.renameField = nil
             self.view.window?.makeFirstResponder(self.collectionView)
-            if let (entries, matches) = self.deferredEntries {
+            if let (entries, matches, grouped) = self.deferredEntries {
                 self.deferredEntries = nil
-                self.setEntries(entries, matches: matches)
+                self.setEntries(entries, matches: matches, grouped: grouped)
             }
         }
         collectionView.addSubview(field)
@@ -479,19 +485,28 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
 // MARK: - Data source and delegate
 
 extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelegate {
-    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { sections.sections.count }
 
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
-        section == 0 ? entries.count : 0
+        sections.sections.indices.contains(section) ? sections.sections[section].files.count : 0
     }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-        guard indexPath.count == 2, indexPath.section == 0, entries.indices.contains(indexPath.item) else {
+        guard let index = entryIndex(at: indexPath) else {
             return NSCollectionViewItem()
         }
         let item = collectionView.makeItem(withIdentifier: GridItem.identifier, for: indexPath)
-        if let item = item as? GridItem { configure(item, at: indexPath.item) }
+        if let item = item as? GridItem { configure(item, at: index) }
         return item
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind,
+                        at indexPath: IndexPath) -> NSView {
+        let view = collectionView.makeSupplementaryView(ofKind: kind, withIdentifier: GridKindHeading.identifier, for: indexPath)
+        if let heading = view as? GridKindHeading, sections.sections.indices.contains(indexPath.section) {
+            heading.configure(sections.sections[indexPath.section].kind, typography: layout.metrics.typography)
+        }
+        return view
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
@@ -500,7 +515,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
-        lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths)
+        lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths, index: entryIndex)
         reportSelection()
     }
 
@@ -519,12 +534,14 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        validateDrop(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation)
+        if layout.isHeading(at: collectionView.convert(draggingInfo.draggingLocation, from: nil)) { endDrop(); return [] }
+        return validateDrop(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        acceptDrop(draggingInfo, indexPath: indexPath, dropOperation: dropOperation)
+        if layout.isHeading(at: collectionView.convert(draggingInfo.draggingLocation, from: nil)) { endDrop(); return false }
+        return acceptDrop(draggingInfo, indexPath: indexPath, dropOperation: dropOperation)
     }
 }
 

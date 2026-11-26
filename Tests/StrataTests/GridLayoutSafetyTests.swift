@@ -12,13 +12,13 @@ import Testing
 struct GridLayoutSafetyTests {
     @Test func anUnboundedLayoutRequestIncludesEveryItem() {
         let layout = GridLayout()
-        layout.itemCount = 10
+        layout.sections = [.init(kind: nil, files: 0..<10)]
         #expect(layout.indexes(in: .infinite) == 0..<10)
     }
 
     @Test func invalidOrDistantPointsHaveNoItem() {
         let layout = GridLayout()
-        layout.itemCount = 10
+        layout.sections = [.init(kind: nil, files: 0..<10)]
         for point in [NSPoint(x: CGFloat.infinity, y: 10), NSPoint(x: 20, y: CGFloat.greatestFiniteMagnitude),
                       NSPoint(x: CGFloat.nan, y: 10), NSPoint(x: 20, y: -CGFloat.infinity)] {
             #expect(layout.index(at: point) == nil)
@@ -29,7 +29,7 @@ struct GridLayoutSafetyTests {
 
     @Test func emptyAndDistantRectanglesHaveNoItems() {
         let layout = GridLayout()
-        layout.itemCount = 10
+        layout.sections = [.init(kind: nil, files: 0..<10)]
         #expect(layout.indexes(in: .null).isEmpty)
         #expect(layout.indexes(in: NSRect(x: 0, y: CGFloat.greatestFiniteMagnitude, width: 100, height: 100)).isEmpty)
         #expect(layout.indexes(in: NSRect(x: 0, y: -1000, width: 100, height: 10)).isEmpty)
