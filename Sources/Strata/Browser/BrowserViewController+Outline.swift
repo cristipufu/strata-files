@@ -62,7 +62,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        guard let node = item as? FileNode else { return rows.count }
+        if item == nil { return kindSections.roots?.count ?? rows.count }
+        guard let node = item as? FileNode else { return 0 }
         guard let children = node.children else {
             loadChildren(of: node)
             return 0
@@ -71,15 +72,13 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        guard let node = item as? FileNode else {
-            if rows.indices.contains(index) { return rows[index] }
-            if let first = rows.first { return first }
-            return FileNode(entry: FileEntry(url: URL(fileURLWithPath: "/"), name: "", isDirectory: true, isPackage: false,
-                                             isHidden: false, isSymlink: false, isVolume: false, size: nil, modified: nil, created: nil,
-                                             added: nil, kind: "", contentType: nil))
+        if let node = item as? FileNode {
+            guard let children = node.children, children.indices.contains(index) else { return NSNull() }
+            return children[index]
         }
-        guard let children = node.children, children.indices.contains(index) else { return node }
-        return children[index]
+        guard item == nil else { return NSNull() }
+        if let roots = kindSections.roots { return roots.indices.contains(index) ? roots[index] : NSNull() }
+        return rows.indices.contains(index) ? rows[index] : NSNull()
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
@@ -99,6 +98,14 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        if let heading = item as? ListKindHeading {
+            let id = NSUserInterfaceItemIdentifier("kindHeading")
+            let label = outlineView.makeView(withIdentifier: id, owner: nil) as? NSTextField ?? NSTextField(labelWithString: "")
+            label.identifier = id
+            label.font = listTypography.bold
+            label.stringValue = heading.kind.title
+            return label
+        }
         guard let node = item as? FileNode else { return nil }
         if let title = node.groupTitle {
             let cell = outlineView.makeView(withIdentifier: .groupCell, owner: nil) as? GroupHeaderCellView ?? {
@@ -186,11 +193,11 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        (item as? FileNode)?.groupTitle != nil
+        item is ListKindHeading || (item as? FileNode)?.groupTitle != nil
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        (item as? FileNode)?.groupTitle == nil
+        FileNode.isFile(item)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -221,7 +228,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         let selection = selectedURLs
         listing.sort(using: sort)
-        outlineView.reloadData()
+        reloadList()
         pushContent()
         select(selection, scroll: false)
         if loading.hasPartialListing { refresh() }
@@ -242,6 +249,7 @@ extension BrowserViewController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField, let ended = inlineRename.end(field) else { return }
         let node = ended.node, newName = ended.name
+        updateListGrouping()
         if !applyHeldListing() {
             let row = outlineView.row(forItem: node)
             if row >= 0 {

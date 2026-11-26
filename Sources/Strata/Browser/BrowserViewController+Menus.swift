@@ -142,7 +142,7 @@ extension BrowserViewController {
         if let node = item as? FileNode {
             dropTarget = node.groupTitle == nil && node.entry.isFolder ? node.url : nil
         } else {
-            dropTarget = isShowingResults ? nil : directory
+            dropTarget = item == nil && !isShowingResults ? directory : nil
         }
         guard let urls = draggedURLs(info), !urls.isEmpty, let target = dropTarget else { return false }
         FileDrop.drop(urls, into: target, info: info, copies: services.copies) { [weak self] move in
@@ -167,6 +167,7 @@ extension BrowserViewController {
     }
 
     private func retargetDrop(_ outlineView: NSOutlineView, _ item: Any?) -> URL? {
+        guard item == nil || item is FileNode else { return nil }
         if let node = item as? FileNode, node.groupTitle == nil {
             if node.entry.isFolder {
                 outlineView.setDropItem(node, dropChildIndex: NSOutlineViewDropOnItemIndex)
@@ -232,6 +233,10 @@ extension BrowserViewController: NSMenuItemValidation, PaneCommandState {
         case #selector(toggleFoldersFirst(_:)):
             item.state = preferences.foldersFirst ? .on : .off
             return true
+        case #selector(groupBy(_:)):
+            guard let choice = (item.representedObject as? String).flatMap(FolderGrouping.init(rawValue:)) else { return false }
+            item.state = grouping == choice && effectiveMode == .list && !isShowingResults ? .on : .off
+            return canGroupByKind
         case #selector(sortBy(_:)):
             let key = Self.sortMenuKeys.indices.contains(item.tag) ? Self.sortMenuKeys[item.tag].key.rawValue : ""
             item.state = outlineView.sortDescriptors.first?.key == key ? .on : .off

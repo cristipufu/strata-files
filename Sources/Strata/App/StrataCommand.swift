@@ -126,6 +126,13 @@ struct StrataCommand {
     static let addToShelf = Self(String(localized: "Add to Shelf"), #selector(BrowserViewController.addToShelf(_:)), .browser, symbol: "tray.and.arrow.down")
     static let checkAppsForUpdates = Self(String(localized: "Check for Updates…"), #selector(BrowserViewController.checkAppsForUpdates(_:)), .browser, symbol: "arrow.down.app")
 
+    static func groupBy(_ grouping: FolderGrouping) -> Self {
+        var command = Self(grouping.title, #selector(BrowserViewController.groupBy(_:)), .browser,
+                           id: "groupBy." + grouping.rawValue, symbol: "rectangle.3.group")
+        command.representedObject = grouping.rawValue
+        return command
+    }
+
     static func view(_ mode: BrowserViewMode) -> Self {
         var command = Self(mode.menuTitle, #selector(BrowserWindowController.syncViewMode(_:)), .window, mode.keyEquivalent,
                            id: "syncViewMode:" + (mode.rawValue == 0 ? "" : "#\(mode.rawValue)"), symbol: mode.symbolName)

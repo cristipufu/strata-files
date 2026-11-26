@@ -89,6 +89,7 @@ enum MainMenu {
             StrataCommand.smallerIcons.menuItem(),
             StrataCommand.showViewOptions.menuItem(),
             .separator(),
+            submenu("Group By", FolderGrouping.allCases.map { StrataCommand.groupBy($0).menuItem() }),
             sortByMenu(),
             .separator(),
             StrataCommand.toggleHiddenFiles.menuItem(),

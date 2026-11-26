@@ -12,27 +12,29 @@ nonisolated struct TreemapItem: Sendable, Hashable {
     let isFolder: Bool
     let contentType: UTType?
 
+    private let kindGroup: FileKindGroup
+
+    var group: FileKindGroup { kindGroup == .pdfs ? .documents : kindGroup }
+}
+
+extension TreemapItem {
     init(url: URL, name: String, bytes: Int64?, isFolder: Bool, contentType: UTType? = nil) {
-        self.url = url
-        self.name = name
-        self.bytes = bytes
-        self.isFolder = isFolder
-        self.contentType = contentType
+        self.init(url: url, name: name, bytes: bytes, isFolder: isFolder, contentType: contentType,
+                  kindGroup: .of(isFolder: isFolder, type: contentType))
     }
 
     init(entry: FileEntry, bytes: Int64?) {
         self.init(url: entry.url, name: entry.displayName, bytes: bytes ?? (entry.isDirectory ? nil : entry.size ?? 0),
-                  isFolder: entry.isFolder, contentType: entry.contentType)
+                  isFolder: entry.isFolder, contentType: entry.contentType, kindGroup: entry.kindGroup)
     }
 
     init(entry: FileEntry, measurement: DiskSizeMeasurement) {
         self.init(url: entry.url, name: entry.displayName, bytes: measurement.bytes,
-                  isFolder: entry.isFolder, contentType: entry.contentType)
+                  isFolder: entry.isFolder, contentType: entry.contentType, kindGroup: entry.kindGroup)
         sizeUnavailable = measurement == .unavailable
         sizeIncomplete = measurement.isPartial
     }
 
-    var group: FileKindGroup { FileKindGroup.of(isFolder: isFolder, type: contentType) }
 }
 
 /// A laid-out tile: one item, or the "Other" tile holding everything too small to draw.

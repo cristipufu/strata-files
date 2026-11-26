@@ -59,6 +59,7 @@ extension BrowserViewController {
             }
         }
         installActiveView()
+        updateListGrouping()
         if !applyHeldListing() { pushContent() }
         guard navigationRevision == revision, effectiveMode == newMode else { return }
         select(selection)

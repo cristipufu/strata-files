@@ -25,7 +25,7 @@ extension BrowserViewController {
         results.tally = .matched(total)
         listing.replace(entries, preservingNodes: false, sort: sort)
         localizeResultNames()
-        outlineView.reloadData()
+        reloadList()
         pushContent()
         select(selection, scroll: false)
         pending.selection = nil
@@ -63,7 +63,7 @@ extension BrowserViewController {
         results.tally = .summary(summary)
         listing.replaceGroups(groups)
         localizeResultNames()
-        outlineView.reloadData()
+        reloadList()
         outlineView.expandItem(nil, expandChildren: true)
         pushContent()
         select(selection, scroll: false)
@@ -97,7 +97,7 @@ extension BrowserViewController {
             listing.sort { nodes in
                 if case .matched = results.tally { sort(&nodes) }
             }
-            outlineView.reloadData()
+            reloadList()
             for node in expanded { outlineView.expandItem(node) }
             pushContent()
             select(selection, scroll: false)
@@ -115,7 +115,7 @@ extension BrowserViewController {
         mediaInfo.cancelPending()
         listing.clear()
         results.tally = .summary("")
-        outlineView.reloadData()
+        reloadList()
         pushContent()
         emptyState.show(symbol: symbol, title: title, message: message, button: button)
         delegate?.browserContentDidChange(self)

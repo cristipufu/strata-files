@@ -8,7 +8,7 @@ extension BrowserViewController {
     // MARK: - Actions
 
     @objc func openSelection(_ sender: Any?) {
-        if sender as? NSOutlineView === outlineView, outlineView.clickedRow < 0 { return }
+        if sender as? NSOutlineView === outlineView, !FileNode.isFile(outlineView.item(atRow: outlineView.clickedRow)) { return }
         open(selectedEntries)
     }
 

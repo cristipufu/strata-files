@@ -383,29 +383,7 @@ enum FileDrop {
 
 // MARK: - Kind groups
 
-/// Coarse file categories for color coding (treemap tiles and legend).
-enum FileKindGroup: Int, CaseIterable, Sendable {
-    case folders, images, video, audio, code, archives, documents, apps, other
-
-    nonisolated static func of(isFolder: Bool, type: UTType?) -> FileKindGroup {
-        if isFolder { return .folders }
-        guard let type else { return .other }
-        if type.conforms(to: .application) || type.conforms(to: .applicationBundle) { return .apps }
-        if type.conforms(to: .image) { return .images }
-        if type.conforms(to: .movie) || type.conforms(to: .video) { return .video }
-        if type.conforms(to: .audio) { return .audio }
-        if type.conforms(to: .archive) || type.conforms(to: .diskImage) || type.conforms(to: .zip) { return .archives }
-        if type.conforms(to: .sourceCode) || type.conforms(to: .script) || type.conforms(to: .json)
-            || type.conforms(to: .xml) || type.conforms(to: .yaml) || type.conforms(to: .html)
-            || type.conforms(to: .propertyList) || type.conforms(to: .unixExecutable) { return .code }
-        if type.conforms(to: .pdf) || type.conforms(to: .text) || type.conforms(to: .presentation)
-            || type.conforms(to: .spreadsheet) || type.conforms(to: .compositeContent) || type.conforms(to: .epub) {
-            return .documents
-        }
-        if type.conforms(to: .audiovisualContent) { return .video }
-        return .other
-    }
-
+extension FileKindGroup {
     var title: String {
         switch self {
         case .folders: String(localized: "Folders", comment: "Kind of file, in the disk usage legend")
@@ -414,6 +392,7 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
         case .audio: String(localized: "Audio", comment: "Kind of file, in the disk usage legend")
         case .code: String(localized: "Code", comment: "Kind of file, in the disk usage legend")
         case .archives: String(localized: "Archives", comment: "Kind of file, in the disk usage legend")
+        case .pdfs: String(localized: "PDFs")
         case .documents: String(localized: "Documents", comment: "Kind of file, in the disk usage legend")
         case .apps: String(localized: "Apps", comment: "Kind of file, in the disk usage legend")
         case .other: String(localized: "Other", comment: "Kind of file, in the disk usage legend")
@@ -429,7 +408,7 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
         case .audio: .systemPink
         case .code: .systemGreen
         case .archives: .systemBrown
-        case .documents: .systemTeal
+        case .documents, .pdfs: .systemTeal
         case .apps: .systemIndigo
         case .other: .systemGray
         }

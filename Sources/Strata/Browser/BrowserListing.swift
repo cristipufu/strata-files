@@ -17,6 +17,11 @@ final class FileNode {
     }
 
     var url: URL { entry.url }
+
+    static func isFile(_ item: Any?) -> Bool {
+        guard let node = item as? FileNode else { return false }
+        return node.groupTitle == nil
+    }
 }
 
 /// A named section of files in grouped results (such as a duplicate set).

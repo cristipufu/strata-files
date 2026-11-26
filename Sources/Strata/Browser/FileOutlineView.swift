@@ -115,7 +115,7 @@ final class FileOutlineView: NSOutlineView {
     override func menu(for event: NSEvent) -> NSMenu? {
         clickToRename.cancel()
         let row = self.row(at: convert(event.locationInWindow, from: nil))
-        if row >= 0, (item(atRow: row) as? FileNode)?.groupTitle != nil {
+        if row >= 0, !FileNode.isFile(item(atRow: row)) {
             deselectAll(nil)
             return nil
         }

@@ -47,6 +47,7 @@ let appModelSources = [
     "ArchiveCache.swift",
     "CreatedFolders.swift",
     "FileEntry.swift",
+    "FileKindGroup.swift",
     "DirectoryEnumeration.swift",
     "FileLayerImports.swift",
     "FileOps.swift",

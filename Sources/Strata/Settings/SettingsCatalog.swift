@@ -22,9 +22,9 @@ nonisolated enum SettingID: String, CaseIterable, Sendable {
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
     case indexFiles, rebuildIndex, excludedFolders, fullDiskAccess, searchSyntax, terminalApp
     case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, cloudRootCrumbs, shortcuts
-    case folderView, folderSort, iconSize, itemInfo, folderInfo, listColumns, nameExtensions, fitColumnWidths
+    case folderView, folderGrouping, folderSort, iconSize, itemInfo, folderInfo, listColumns, nameExtensions, fitColumnWidths
 
-    var requiresFolder: Bool { [.folderView, .folderSort, .iconSize].contains(self) }
+    var requiresFolder: Bool { [.folderView, .folderGrouping, .folderSort, .iconSize].contains(self) }
 }
 
 nonisolated struct SettingEntry: Sendable {
@@ -68,6 +68,7 @@ enum SettingsCatalog {
               "dropbox icloud google drive onedrive box cloud storage path bar breadcrumbs"),
         entry(.shortcuts, .shortcuts, "Shortcuts", "keyboard shortcuts key bindings hotkeys"),
         entry(.folderView, .viewOptions, "View", "folder view mode icons gallery columns use as defaults reset"),
+        entry(.folderGrouping, .viewOptions, "Group By", "list folder groups file type kind"),
         entry(.folderSort, .viewOptions, "Sort By", "folder sorting ascending descending reverse order"),
         entry(.iconSize, .viewOptions, "Icon size", "icons size zoom folder"),
         entry(.itemInfo, .viewOptions, "Show item info", "item information dimensions file size"),

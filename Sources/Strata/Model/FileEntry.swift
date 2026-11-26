@@ -28,6 +28,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package let created: Date?
     package let added: Date?
     package let kind: String
+    package let kindGroup: FileKindGroup
     package let contentType: UTType?
 
     /// A folder you navigate into (packages such as apps open instead).
@@ -153,6 +154,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         self.created = created
         self.added = added
         self.kind = kind
+        kindGroup = .of(isFolder: isDirectory && !isPackage, type: contentType)
         self.contentType = contentType
     }
 
@@ -185,6 +187,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
                          size: values.fileSize.map(Int64.init), system: values.localizedTypeDescription,
                          type: values.contentType)
         contentType = values.contentType
+        kindGroup = .of(isFolder: isDirectory && !isPackage, type: contentType)
     }
 
     /// The same item described as another kind.

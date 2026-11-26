@@ -8473,6 +8473,20 @@
     "tests": "DuplicateFinderTests/closingAPaneReleasesItsSearchWhileAnIndexReadIsHeld"
   },
   {
+    "file": "Strata/Browser/BrowserViewController+Menus.swift",
+    "rule": "Folder kind groups: accepting a drop on a heading must never transfer into the displayed directory",
+    "find": "dropTarget = item == nil && !isShowingResults ? directory : nil",
+    "replace": "dropTarget = !isShowingResults ? directory : nil",
+    "tests": "ListKindGroupingTests/headingsRejectFileDragsAndCommandsWhileExpandedFoldersKeepTheirChildren"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "rule": "Folder kind groups: filtering retains the actual files selected across sections",
+    "find": "let selection = preservingSelection ? (pending.selection ?? selectedURLs) : (showsKindGroups ? selectedURLs : [])",
+    "replace": "let selection = preservingSelection ? (pending.selection ?? selectedURLs) : []",
+    "tests": "ListKindGroupingTests/kindsShareAHeadingAndKeepTheChosenFilesThroughFilteringSortingAndRefresh"
+  },
+  {
     "file": "Strata/Sidebar/SidebarViewController.swift",
     "rule": "Sidebar selection: duplicate destinations retain the section the user chose",
     "find": "            chosenRow = (section.id, item.target)",
