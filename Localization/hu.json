@@ -539,6 +539,7 @@
     "Author": "Szerző",
     "Automatic": "Automatikus",
     "Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.": "Automatikus módban a Ghostty, az iTerm, a Warp és a Terminál közül az elsőként telepített lesz kiválasztva. A ⌃⌘T megnyitja az aktuális mappát.",
+    "Automatically fit columns to filenames": "Oszlopszélesség automatikus igazítása a fájlnevekhez",
     "Back": "Vissza",
     "Back (⌘[)": "Vissza (⌘[)",
     "Back to %@": "Visszaállítás erre: %@",

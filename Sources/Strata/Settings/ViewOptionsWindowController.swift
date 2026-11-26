@@ -52,6 +52,7 @@ struct ViewOptionsView: View {
     @State private var previews: Bool
     @State private var alternatingRows: Bool
     @State private var showNameExtensions: Bool
+    @State private var fitColumnWidths: Bool
     @State private var hiddenColumns: Set<String>
 
     init(folderOptions: FolderViewOptions) {
@@ -62,6 +63,7 @@ struct ViewOptionsView: View {
         _alternatingRows = State(initialValue: preferences.alternatingRows)
         _showNameExtensions = State(initialValue: preferences.showListNameExtensions)
         _previews = State(initialValue: preferences.showIconPreviews)
+        _fitColumnWidths = State(initialValue: preferences.fitColumnWidths)
         _hiddenColumns = State(initialValue: preferences.hiddenListColumns)
     }
 
@@ -101,6 +103,11 @@ struct ViewOptionsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Show icon previews", isOn: Binding(get: { previews }, set: { previews = $0; preferences.showIconPreviews = $0 }))
             }
+            Section("Columns") {
+                Toggle(String(localized: "Automatically fit columns to filenames", comment: "Column view width option"),
+                       isOn: Binding(get: { fitColumnWidths }, set: { preferences.fitColumnWidths = $0 }))
+                    .settingAnchor(.fitColumnWidths)
+            }
             Section {
                 Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; preferences.alternatingRows = $0 }))
                 Toggle("Show extensions in Name column", isOn: Binding(get: { showNameExtensions }, set: { showNameExtensions = $0; preferences.showListNameExtensions = $0 })).settingAnchor(.nameExtensions)
@@ -124,6 +131,7 @@ struct ViewOptionsView: View {
         }
         .onReceive(preferences.notifications.publisher(for: .appearanceChanged)) { _ in previews = preferences.showIconPreviews }
         .onReceive(preferences.notifications.publisher(for: .alternatingRowsChanged, object: preferences)) { _ in alternatingRows = preferences.alternatingRows }
+        .onReceive(preferences.notifications.publisher(for: .fitColumnWidthsChanged, object: preferences)) { _ in fitColumnWidths = preferences.fitColumnWidths }
         .onReceive(preferences.notifications.publisher(for: .listNamesChanged, object: preferences)) { _ in showNameExtensions = preferences.showListNameExtensions }
         .onReceive(preferences.notifications.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = preferences.hiddenListColumns }
     }

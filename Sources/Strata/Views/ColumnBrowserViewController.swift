@@ -22,6 +22,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     /// The same order, for sorting those columns away from the main thread as they're read; nil when it can't be.
     var sortedBy: BrowserOrdering.Snapshot?
     var showHidden: () -> Bool
+    static let minimumColumnWidth: CGFloat = 140
+    private static let maximumManualWidth: CGFloat = 640
+    let measureNames: ColumnNameWidth.Measure
+    private(set) var fittingIsActive = true
     var defaultColumnWidth: CGFloat = 230
     var previewColumnWidth: CGFloat = 290
 
@@ -44,7 +48,9 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader, preferences: Prefs,
          thumbnails: FileThumbnails, itemInfo: ItemInfoLoader, copies: CopyProviders,
-         clipboard: Clipboard, statuses: FileStatuses, names: FolderNames) {
+         clipboard: Clipboard, statuses: FileStatuses, names: FolderNames,
+         measureNames: @escaping ColumnNameWidth.Measure = ColumnNameWidth.measure) {
+        self.measureNames = measureNames
         self.directoryReader = directoryReader
         self.statuses = statuses
         self.names = names
@@ -67,6 +73,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     func stopBackgroundWork() {
+        setFittingActive(false)
         cancelPendingRename()
         pendingReveal = []
         focusWhenLoaded = nil
@@ -99,12 +106,13 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets()
         view = scrollView
+        preferences.notifications.addObserver(self, selector: #selector(fitPreferenceChanged), name: .fitColumnWidthsChanged, object: preferences)
         clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: clipboard)
     }
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        layoutColumns()
+        if preferences.fitColumnWidths { fittedColumnWidthChanged() } else { layoutColumns() }
     }
 
     var focusView: NSView { activePane?.tableView ?? view }
@@ -227,7 +235,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private func makePane(_ folder: URL, depth: Int) -> ColumnPane {
         let pane = ColumnPane(folder: folder, controller: self)
         pane.autoresizingMask = [.height]
-        pane.width = widths[depth] ?? defaultColumnWidth
+        pane.useManualWidth(widths[depth] ?? defaultColumnWidth, overrideFit: false)
         strip.addSubview(pane)
         return pane
     }
@@ -246,12 +254,13 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         if focusWhenLoaded.map({ !panes.contains($0) }) ?? false { focusWhenLoaded = nil }
     }
 
-    private func layoutColumns() {
+    private func layoutColumns(keepingWidths: Bool = false) {
         let clip = scrollView.contentView.bounds
         var x: CGFloat = 0
         for pane in panes {
-            pane.frame = NSRect(x: x, y: 0, width: pane.width, height: clip.height)
-            x += pane.width
+            let width = keepingWidths && pane.frame.width > 0 ? pane.frame.width : pane.displayedWidth(in: clip.width)
+            pane.frame = NSRect(x: x, y: 0, width: width, height: clip.height)
+            x += width
         }
         if let preview {
             // The preview takes at least its width, and whatever room is left to the right.
@@ -273,7 +282,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         if target.minX < origin.x { origin.x = target.minX }
         origin.x = max(0, min(origin.x, strip.frame.width - visible.width))
         guard origin != visible.origin else { return }
-        if animated, view.window != nil {
+        let awaitingFit = preferences.fitColumnWidths && preview == nil && panes.last?.isLoaded == false
+        if animated, !awaitingFit, view.window != nil {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.22
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -431,18 +441,57 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     func resize(_ pane: ColumnPane, to width: CGFloat, all: Bool) {
-        let width = min(max(width, 140), 640)
-        if all {
-            for (i, p) in panes.enumerated() {
-                p.width = width
-                widths[i] = width
-            }
-            defaultColumnWidth = width
-        } else if let index = panes.firstIndex(where: { $0 === pane }) {
-            pane.width = width
-            widths[index] = width
+        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }
+        let fitting = preferences.fitColumnWidths
+        let upperBound = fitting && scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : Self.maximumManualWidth
+        let width = min(max(width, Self.minimumColumnWidth), upperBound)
+        for depth in panes.indices where all || depth == index {
+            panes[depth].useManualWidth(width, overrideFit: fitting)
+            if !fitting { widths[depth] = width }
         }
+        if all && !fitting { defaultColumnWidth = width }
         layoutColumns()
+    }
+
+    @objc private func fitPreferenceChanged() {
+        for (depth, pane) in panes.enumerated() {
+            pane.useManualWidth(widths[depth] ?? defaultColumnWidth, overrideFit: false)
+            pane.fitNames()
+        }
+        fittedColumnWidthChanged()
+    }
+
+    func setFittingActive(_ active: Bool) {
+        guard active != fittingIsActive else { return }
+        fittingIsActive = active
+        for pane in panes {
+            if active { pane.fitNames() } else { pane.cancelWidthMeasurement() }
+        }
+        if active { fittedColumnWidthChanged() }
+    }
+
+    /// Keep the leftmost visible column in place when a column to its left finishes measuring.
+    func fittedColumnWidthChanged(keepingLastVisible: Bool = false) {
+        guard fittingIsActive else { return }
+        if renameField != nil { return layoutColumns(keepingWidths: true) }
+        let clip = scrollView.contentView
+        let left = clip.bounds.minX
+        let columns: [NSView] = panes + [preview].compactMap { $0 }
+        let anchor = columns.last { $0.frame.width > 0 && $0.frame.minX <= left }
+        let offset = left - (anchor?.frame.minX ?? 0)
+        let atEnd = left > 0 && clip.bounds.maxX >= strip.frame.width
+        // Navigation already revealed the newly opened folder at its provisional width.
+        let last = keepingLastVisible && panes.count > 1 && preview == nil ? panes.last : nil
+        let fullyVisible = last.flatMap { $0.frame.minX >= left && $0.frame.maxX <= clip.bounds.maxX ? $0 : nil }
+        layoutColumns()
+        let end = max(0, strip.frame.width - clip.bounds.width)
+        var desired = atEnd ? end : (anchor?.frame.minX ?? 0) + offset
+        if let fullyVisible { desired = max(desired, fullyVisible.frame.maxX - clip.bounds.width) }
+        let x = min(max(0, desired), end)
+        if x != clip.bounds.minX {
+            clip.scroll(to: NSPoint(x: x, y: clip.bounds.minY))
+            scrollView.reflectScrolledClipView(clip)
+        }
     }
 
     private func reportSelection(force: Bool = false) {
@@ -475,7 +524,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     func resortLoadedColumns() {
         for pane in panes.dropFirst() {
             let sorted = pane.entries.sorted(by: sortComparator)
-            if sorted.map(\.url) != pane.entries.map(\.url) { pane.setEntries(sorted, matches: [:]) }
+            if sorted.map(\.url) != pane.entries.map(\.url) { pane.setEntries(sorted, matches: [:], partial: pane.hasPartialListing) }
         }
     }
 
@@ -538,6 +587,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             if let self, let pane, self.panes.contains(where: { $0 === pane }) {
                 self.view.window?.makeFirstResponder(pane.tableView)
                 pane.applyDeferred()
+                self.fittedColumnWidthChanged()
             }
         }
         pane.tableView.addSubview(field)

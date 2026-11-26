@@ -539,6 +539,7 @@
     "Author": "Auteur",
     "Automatic": "Automatique",
     "Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.": "Automatique choisit le premier installé parmi Ghostty, iTerm, Warp et Terminal. ⌃⌘T ouvre le dossier actuel.",
+    "Automatically fit columns to filenames": "Ajuster automatiquement la largeur des colonnes aux noms de fichiers",
     "Back": "Précédent",
     "Back (⌘[)": "Précédent (⌘[)",
     "Back to %@": "Revenir à %@",

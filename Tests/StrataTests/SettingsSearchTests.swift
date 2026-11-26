@@ -17,7 +17,7 @@ import Testing
         let rows = controller.settingItems(), ranker = PaletteRanker()
         ranker.source = rows
         let queries: [(String, SettingID)] = [("zebra", .alternatingRows), ("settings zebra", .alternatingRows),
-            ("verify copies", .verifyCopies), ("filename extensions", .nameExtensions), ("font size", .textSize),
+            ("verify copies", .verifyCopies), ("filename extensions", .nameExtensions), ("font size", .textSize), ("auto fit width", .fitColumnWidths),
             ("full disk access", .fullDiskAccess), ("settings terminal", .terminalApp), ("icon size", .iconSize)]
         for (query, expected) in queries {
             ranker.rank(query)
@@ -84,6 +84,49 @@ import Testing
         #expect(browser.folderPresentation == before)
         window.close()
         #expect(controller.settingsFocus.request == nil && browser.folderOptions == nil)
+    }
+
+    @Test func columnFitSwitchPersistsAndResizesOnlyWindowsSharingItsPreferences() async throws {
+        let tree = try TestTree("folder/file")
+        let environment = try IndependentEnvironment(), other = try IndependentEnvironment()
+        let owner = BrowserViewController(services: environment.services)
+        let shared = BrowserViewController(services: environment.services)
+        let isolated = BrowserViewController(services: other.services)
+        let browsers = [owner, shared, isolated]
+        defer { browsers.forEach { $0.stopBackgroundWork() } }
+        var roots: [ColumnPane] = []
+        for browser in browsers {
+            browser.view.frame = NSRect(x: 0, y: 0, width: 900, height: 440)
+            browser.setMode(.columns, remember: false)
+            browser.load(tree.url("folder"))
+            await browser.directoryReads.task?.value
+            browser.view.layoutSubtreeIfNeeded()
+            let scroll = try #require(browser.columns.view as? NSScrollView)
+            roots.append(try #require(scroll.documentView?.subviews.compactMap { $0 as? ColumnPane }.first))
+        }
+        let panel = environment.services.viewOptions
+        let window = try #require(panel.window)
+        defer { window.close() }
+        panel.reveal(.fitColumnWidths, for: owner, present: false)
+        let marker = try await anchor(.fitColumnWidths, in: window, focus: panel.settingsFocus)
+        let content = try #require(window.contentView)
+        let bounds = marker.convert(marker.bounds, to: content)
+        let toggle = try #require(switches(in: content).first { control in
+            bounds.contains(content.convert(NSPoint(x: control.bounds.midX, y: control.bounds.midY), from: control))
+        })
+        #expect(toggle.state == .off)
+        toggle.performClick(nil)
+        for pane in roots { await pane.widthTask?.value }
+        let reopened = Prefs(defaults: environment.preferences.defaults, domainName: environment.preferences.domainName)
+        #expect(reopened.fitColumnWidths && !other.preferences.fitColumnWidths)
+        #expect(roots[0].frame.width == roots[1].frame.width && roots[0].frame.width < roots[2].frame.width)
+        #expect(roots[2].frame.width == isolated.columns.defaultColumnWidth)
+        #expect(tree.snapshot() == ["folder/", "folder/file"])
+    }
+
+    private func switches(in view: NSView) -> [NSSwitch] {
+        if let control = view as? NSSwitch { return [control] }
+        return view.subviews.flatMap { switches(in: $0) }
     }
 
     @Test func replacedAnchorCallbacksAndRetiredRequestsCannotWinOrKeepTheirOwnerAlive() async throws {

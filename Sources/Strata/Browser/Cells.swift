@@ -152,19 +152,24 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         if !matches.isEmpty {
             let bold = typography.bold
             let highlight: NSColor = selected ? color : ThemeStyle.accent
-            let characters = Array(name)
-            var utf16Offset = 0
-            var offsets: [Int] = []
-            for c in characters {
-                offsets.append(utf16Offset)
-                utf16Offset += c.utf16.count
-            }
-            for i in matches where characters.indices.contains(i) {
-                let range = NSRange(location: offsets[i], length: characters[i].utf16.count)
-                text.addAttributes([.font: bold, .foregroundColor: highlight], range: range)
-            }
+            Self.highlight(matches, in: text, attributes: [.font: bold, .foregroundColor: highlight])
         }
         label.attributedStringValue = text
+    }
+
+    nonisolated static func highlight(_ matches: [Int], in text: NSMutableAttributedString,
+                                      attributes: [NSAttributedString.Key: Any]) {
+        let name = text.string
+        // Fuzzy reports Character offsets; attributed strings use UTF-16 ranges.
+        var offset = 0
+        let ranges = name.map { character in
+            let length = character.utf16.count
+            defer { offset += length }
+            return NSRange(location: offset, length: length)
+        }
+        for index in matches where ranges.indices.contains(index) {
+            text.addAttributes(attributes, range: ranges[index])
+        }
     }
 
     func updateColorTheme() { render() }

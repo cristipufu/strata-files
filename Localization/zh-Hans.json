@@ -447,6 +447,7 @@
     "Author": "作者",
     "Automatic": "自动",
     "Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.": "“自动”会选择Ghostty、iTerm、Warp和终端中第一个已安装的App。按⌃⌘T可打开当前文件夹。",
+    "Automatically fit columns to filenames": "自动根据文件名调整列宽",
     "Back": "返回",
     "Back (⌘[)": "返回（⌘[）",
     "Back to %@": "恢复为%@",

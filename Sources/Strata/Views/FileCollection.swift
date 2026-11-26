@@ -456,9 +456,13 @@ struct FileViewTypography: Equatable {
     private static var cachedFonts: [Double: (regular: NSFont, bold: NSFont)] = [:]
     private static func fonts(for size: Double) -> (regular: NSFont, bold: NSFont) {
         if let cached = cachedFonts[size] { return cached }
-        let made = (regular: NSFont.systemFont(ofSize: size), bold: NSFont.systemFont(ofSize: size, weight: .bold))
+        let made = makeFonts(for: size)
         cachedFonts[size] = made
         return made
+    }
+
+    nonisolated static func makeFonts(for size: CGFloat) -> (regular: NSFont, bold: NSFont) {
+        (.systemFont(ofSize: size), .systemFont(ofSize: size, weight: .bold))
     }
 }
 

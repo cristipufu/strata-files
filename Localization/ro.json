@@ -631,6 +631,7 @@
     "Author": "Autor",
     "Automatic": "Automat",
     "Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.": "Automat alege primul instalat dintre Ghostty, iTerm, Warp și Terminal. ⌃⌘T deschide dosarul curent.",
+    "Automatically fit columns to filenames": "Adaptează automat lățimea coloanelor la numele fișierelor",
     "Back": "Înapoi",
     "Back (⌘[)": "Înapoi (⌘[)",
     "Back to %@": "Revino la %@",

@@ -539,6 +539,7 @@
     "Author": "Yazar",
     "Automatic": "Otomatik",
     "Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.": "Otomatik, Ghostty, iTerm, Warp ve Terminal arasından yüklü olan ilkini seçer. ⌃⌘T geçerli klasörü açar.",
+    "Automatically fit columns to filenames": "Sütun genişliklerini dosya adlarına göre otomatik olarak ayarla",
     "Back": "Geri",
     "Back (⌘[)": "Geri (⌘[)",
     "Back to %@": "%@ kestirmesine geri dön",

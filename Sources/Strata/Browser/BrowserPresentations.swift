@@ -30,6 +30,7 @@ final class BrowserPresentations {
 
     func install(_ mode: BrowserViewMode, in browser: BrowserViewController) {
         attach(mode, in: browser)
+        columnController?.setFittingActive(mode == .columns)
         if mode == .columns, columnsNeedRefresh {
             columnsNeedRefresh = false
             columnController?.refreshVisibleRows()

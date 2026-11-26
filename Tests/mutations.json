@@ -12021,5 +12021,19 @@
     "replace": "guard true else { throw POSIXError(.ESTALE) }",
     "rule": "Tag management: a late file edit overwrites a newer catalog definition",
     "tests": "TagManagementTests/anEditNeverOverwritesACatalogChangeMadeDuringFileWork"
+  },
+  {
+    "file": "Strata/Views/ColumnNameWidth.swift",
+    "find": "for entry in labels.entries {",
+    "replace": "for entry in labels.entries.prefix(2000) {",
+    "rule": "Automatic column widths miss long names after the first two thousand entries",
+    "tests": "ColumnWidthTests/finalSnapshotFitsActualDisplayNamesBeyondTwoThousandAndTracksViewportAndFont"
+  },
+  {
+    "file": "Strata/Views/ColumnPane.swift",
+    "find": "guard !Task.isCancelled, let self else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Automatic column widths accept an obsolete measurement",
+    "tests": "ColumnWidthTests/lateMeasurementsCannotResizeAReplacedOrManuallySizedColumn"
   }
 ]

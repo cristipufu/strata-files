@@ -55,7 +55,9 @@ final class CloudBadge: NSImageView, ColorThemeUpdating {
     /// Clicks and drags go to the row or icon underneath (an image view would otherwise take them).
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    static let visibleWidth: CGFloat = 18
+
     override var intrinsicContentSize: NSSize {
-        isHidden ? NSSize(width: 0, height: 14) : NSSize(width: 18, height: 14)
+        isHidden ? NSSize(width: 0, height: 14) : NSSize(width: Self.visibleWidth, height: 14)
     }
 }

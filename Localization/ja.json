@@ -447,6 +447,7 @@
     "Author": "著者",
     "Automatic": "自動",
     "Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.": "「自動」ではGhostty、iTerm、Warp、ターミナルのうち最初に見つかったものを使用します。⌃⌘Tで現在のフォルダを開きます。",
+    "Automatically fit columns to filenames": "列の幅をファイル名に自動的に合わせる",
     "Back": "戻る",
     "Back (⌘[)": "戻る（⌘[）",
     "Back to %@": "%@に戻す",

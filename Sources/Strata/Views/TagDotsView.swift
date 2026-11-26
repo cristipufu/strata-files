@@ -37,13 +37,21 @@ final class TagDotsView: NSView {
         didSet { if backgroundStyle != oldValue { needsDisplay = true } }
     }
 
-    var diameter: CGFloat = 12 {
+    private static let defaultDiameter: CGFloat = 12
+    private static let maximumDots = 3
+    static var maximumWidth: CGFloat { width(count: maximumDots, diameter: defaultDiameter) }
+
+    var diameter = TagDotsView.defaultDiameter {
         didSet { invalidateIntrinsicContentSize(); needsDisplay = true }
     }
 
     /// The width dots for `tags` take (0 without tags).
     static func width(for tags: [FinderTag], diameter: CGFloat) -> CGFloat {
-        let count = min(tags.count, 3)
+        width(count: tags.count, diameter: diameter)
+    }
+
+    private static func width(count: Int, diameter: CGFloat) -> CGFloat {
+        let count = min(count, maximumDots)
         return count == 0 ? 0 : diameter + 2 + CGFloat(count - 1) * diameter * 0.55
     }
 
@@ -73,7 +81,7 @@ final class TagDotsView: NSView {
         context.saveGState()
         context.setAlpha(alpha)
         context.beginTransparencyLayer(auxiliaryInfo: nil)
-        for (index, tag) in tags.suffix(3).enumerated() {
+        for (index, tag) in tags.suffix(maximumDots).enumerated() {
             let rect = NSRect(x: origin.x + 1 + CGFloat(index) * diameter * 0.55, y: origin.y, width: diameter, height: diameter)
             context.setBlendMode(.destinationOut)
             NSColor.black.setFill()

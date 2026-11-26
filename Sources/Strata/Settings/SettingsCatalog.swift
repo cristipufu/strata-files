@@ -22,7 +22,7 @@ nonisolated enum SettingID: String, CaseIterable, Sendable {
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
     case indexFiles, rebuildIndex, excludedFolders, fullDiskAccess, searchSyntax, terminalApp
     case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, cloudRootCrumbs, shortcuts
-    case folderView, folderSort, iconSize, itemInfo, folderInfo, listColumns, nameExtensions
+    case folderView, folderSort, iconSize, itemInfo, folderInfo, listColumns, nameExtensions, fitColumnWidths
 
     var requiresFolder: Bool { [.folderView, .folderSort, .iconSize].contains(self) }
 }
@@ -72,6 +72,7 @@ enum SettingsCatalog {
         entry(.iconSize, .viewOptions, "Icon size", "icons size zoom folder"),
         entry(.itemInfo, .viewOptions, "Show item info", "item information dimensions file size"),
         entry(.folderInfo, .viewOptions, "Folder info", "folder info item count total size"),
+        entry(.fitColumnWidths, .viewOptions, "Automatically fit columns to filenames", "column view auto fit width resize longest filename"),
         entry(.listColumns, .viewOptions, "List columns", "list columns visibility metadata dimensions duration"),
         entry(.nameExtensions, .viewOptions, "Show extensions in Name column", "filename extensions hide show name column"),
     ]

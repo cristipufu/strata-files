@@ -5,7 +5,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let preferences: Prefs
     private(set) var typography: FileViewTypography
     var isRoot = false
-    var width: CGFloat = 230
+    private var manualWidth: CGFloat
+    private var fittedWidth: CGFloat?
+    private var manuallyResized = false
+    private(set) var widthTask: Task<Void, Never>?
     private(set) var entries: [FileEntry] = []
     private(set) var isLoaded = false
     private(set) var hasPartialListing = false
@@ -18,7 +21,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let clipboard: Clipboard
     private let thumbnails: FileThumbnails
     private let statuses: FileStatuses
-    var renamingRow: Int?
+    var renamingRow: Int? {
+        didSet { if renamingRow != nil { cancelWidthMeasurement() } }
+    }
     /// Opens the folder a drag rests on in the next column, by selecting it.
     lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
         guard let self, let row = rowByKey[PathSpelling.short(folder)] else { return nil }
@@ -53,6 +58,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var deferred: DeferredEntries?
 
     func applyDeferred() {
+        defer { if widthTask == nil { fitNames() } }
         guard let deferred else { refreshVisibleRows(); return }
         self.deferred = nil
         setEntries(deferred.entries, matches: deferred.matches, partial: deferred.partial, metadata: deferred.metadata)
@@ -62,6 +68,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     init(folder: URL, controller: ColumnBrowserViewController) {
         self.folder = folder
         self.controller = controller
+        manualWidth = controller.defaultColumnWidth
         copies = controller.copies
         clipboard = controller.clipboard
         thumbnails = controller.thumbnails
@@ -139,11 +146,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             guard let self else { return }
             self.controller?.resize(self, to: start + delta, all: all)
         }
-        divider.startWidth = { [weak self] in self?.width ?? 0 }
-        divider.onDoubleClick = { [weak self] in
-            guard let self else { return }
-            self.controller?.resize(self, to: self.fittingWidth, all: false)
-        }
+        divider.startWidth = { [weak self] in self?.frame.width ?? 0 }
+        divider.onDoubleClick = { [weak self] in self?.fitNames(explicit: true) }
         addSubview(divider)
     }
 
@@ -173,6 +177,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         listingWatch = nil
         watchedFolder = nil
         deferred = nil
+        cancelWidthMeasurement()
     }
 
     // MARK: Loading
@@ -276,6 +281,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             deferred = DeferredEntries(entries: entries, matches: matches, partial: partial, metadata: metadata)
             return
         }
+        let previousEntries = self.entries
+        let checkNames = !partial && controller?.fittingIsActive == true
+            && (widthTask != nil || (preferences.fitColumnWidths && !manuallyResized))
+        var refit = checkNames && (!isLoaded || hasPartialListing || entries.count != previousEntries.count || self.matches != matches)
         let appliedGeneration = generation
         let wasLoaded = isLoaded
         let metadataRead: (entries: [FileEntry], folder: URL, append: Bool)? = switch metadata {
@@ -297,8 +306,13 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         needsLayout = true
         self.matches = matches
         rowByKey.removeAll(keepingCapacity: true)
-        for (i, entry) in entries.enumerated() { rowByKey[entry.locationKey] = i }
+        for (i, entry) in entries.enumerated() {
+            rowByKey[entry.locationKey] = i
+            if checkNames && !refit && entry.displayName != previousEntries[i].displayName { refit = true }
+        }
         isLoaded = true
+        if partial { cancelWidthMeasurement() }
+        else if refit { fitNames(explicit: !preferences.fitColumnWidths) }
         suppressSelection = true
         if let insertions { tableView.insertRows(at: insertions, withAnimation: []) }
         else { tableView.reloadData() }
@@ -361,16 +375,63 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func restyle() {
+        let previous = typography
         typography = FileViewTypography(preferences: preferences)
         tableView.rowHeight = FileViewStyle.columnHeight(for: preferences)
         tableView.reloadData()
+        if typography != previous { fitNames() }
     }
 
-    /// Width that shows the longest name in full.
-    var fittingWidth: CGFloat {
-        let font = typography.font
-        let longest = entries.prefix(2000).map { ($0.name as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        return ceil(longest) + 18 + 7 + 22 + 30
+    func displayedWidth(in viewport: CGFloat) -> CGFloat {
+        guard let fittedWidth, viewport > 0 else { return manualWidth }
+        return min(max(ColumnBrowserViewController.minimumColumnWidth, fittedWidth), viewport)
+    }
+
+    func useManualWidth(_ width: CGFloat, overrideFit: Bool) {
+        cancelWidthMeasurement()
+        manualWidth = width
+        fittedWidth = nil
+        manuallyResized = overrideFit
+    }
+
+    func cancelWidthMeasurement() {
+        widthTask?.cancel()
+        widthTask = nil
+    }
+
+    func fitNames(explicit: Bool = false) {
+        cancelWidthMeasurement()
+        if explicit { manuallyResized = false }
+        guard let controller, controller.fittingIsActive, isLoaded,
+              explicit || (preferences.fitColumnWidths && !manuallyResized && !hasPartialListing),
+              renamingRow == nil else { return }
+        let labels = ColumnNameWidth(entries: entries, matches: matches, pointSize: typography.font.pointSize)
+        let measure = controller.measureNames
+        widthTask = Task { [weak self] in
+            let textWidth = await measure(labels)
+            guard !Task.isCancelled, let self else { return }
+            widthTask = nil
+            guard renamingRow == nil, let controller = self.controller else { return }
+            let ideal = entries.isEmpty ? ColumnBrowserViewController.minimumColumnWidth : textWidth + nameMargins
+            if preferences.fitColumnWidths {
+                let firstFit = fittedWidth == nil
+                fittedWidth = ideal
+                controller.fittedColumnWidthChanged(keepingLastVisible: firstFit)
+            } else if explicit {
+                controller.resize(self, to: ideal, all: false)
+            }
+        }
+    }
+
+    /// Reserve the trailing marks even before their metadata arrives, so fetching badges cannot move the next column.
+    private var nameMargins: CGFloat {
+        let badges = GitStatusBadge.leadingGap + GitStatusBadge.tileSize.width
+            + CloudBadge.visibleWidth + TagDotsView.maximumWidth
+        let iconAndSpacing = NameCellView.iconSide + 18
+        let disclosureAndSpacing: CGFloat = 16
+        let tableInsetsAndLabelPadding: CGFloat = 28
+        let scroller = NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollView.scrollerStyle)
+        return ceil(badges + iconAndSpacing + disclosureAndSpacing + tableInsetsAndLabelPadding + scroller)
     }
 
     // MARK: Table

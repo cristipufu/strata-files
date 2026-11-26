@@ -3,6 +3,7 @@ import AppKit
 extension Notification.Name {
     package static let alternatingRowsChanged = Notification.Name("StrataAlternatingRowsChanged")
     package static let cloudRootCrumbsChanged = Notification.Name("StrataCloudRootCrumbsChanged")
+    package static let fitColumnWidthsChanged = Notification.Name("StrataFitColumnWidthsChanged")
     package static let listNamesChanged = Notification.Name("StrataListNamesChanged")
     package static let prefsChanged = Notification.Name("StrataPrefsChanged")
     /// Theme, density or text size changed (Settings ▸ Appearance): views restyle, nothing reloads.
@@ -91,6 +92,7 @@ package final class Prefs: PreviewTextSettings {
         static let density = "density"
         static let nameTextSize = "nameTextSize"
         static let alternatingRows = "alternatingRows"
+        static let fitColumnWidths = "fitColumnWidths"
         static let showListNameExtensions = "showListNameExtensions"
         static let showIconPreviews = "showIconPreviews"
         static let cloudRootCrumbs = "cloudRootCrumbs"
@@ -337,6 +339,15 @@ package final class Prefs: PreviewTextSettings {
             guard newValue != alternatingRows else { return }
             defaults.set(newValue, forKey: Key.alternatingRows)
             notifications.post(name: .alternatingRowsChanged, object: self)
+        }
+    }
+
+    package var fitColumnWidths: Bool {
+        get { defaults.bool(forKey: Key.fitColumnWidths) }
+        set {
+            guard newValue != fitColumnWidths else { return }
+            defaults.set(newValue, forKey: Key.fitColumnWidths)
+            notifications.post(name: .fitColumnWidthsChanged, object: self)
         }
     }
 
