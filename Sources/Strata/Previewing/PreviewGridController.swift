@@ -197,7 +197,8 @@ import AppKit
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        if event.keyCode == KeyCode.escape || (event.keyCode == KeyCode.space && modifiers.isEmpty) { onClose?() }
+        if event.keyCode == KeyCode.escape { onClose?() }
+        else if event.keyCode == KeyCode.space, modifiers.isEmpty { if !event.isARepeat { onClose?() } }
         else if (event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.numpadEnter), modifiers.isEmpty { onActivate?() }
         else { super.keyDown(with: event) }
     }

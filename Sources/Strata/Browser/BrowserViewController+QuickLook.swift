@@ -66,7 +66,8 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
-        handlePreviewNavigationKey(event, in: panel)
+        if let event, event.type == .keyDown, event.isARepeat, event.keyCode == KeyCode.space { return true }
+        return handlePreviewNavigationKey(event, in: panel)
     }
 
     func handlePreviewNavigationKey(_ event: NSEvent?, in previewWindow: NSWindow?) -> Bool {
