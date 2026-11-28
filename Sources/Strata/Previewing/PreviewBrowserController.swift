@@ -609,7 +609,7 @@ import StrataPreviews
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 || (event.charactersIgnoringModifiers == " " && event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty) {
-            onClose?()
+            if !event.isARepeat { onClose?() }
         } else if event.keyCode == 36, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
             onOpen?()
         } else {

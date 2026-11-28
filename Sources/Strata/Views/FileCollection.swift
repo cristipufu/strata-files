@@ -30,6 +30,8 @@ enum FileViewKey: Equatable {
     case escape
     case returnKey
     case space
+    /// Space's auto-repeat while it's held: the preview it opened stays open instead of toggling with every repeat.
+    case heldSpace
     /// Plain Tab: switches panes in dual-pane mode; otherwise the usual move to the next control.
     case tab
 
@@ -40,7 +42,7 @@ enum FileViewKey: Equatable {
         case KeyCode.returnKey where plain, KeyCode.numpadEnter where plain:
             return .returnKey
         case KeyCode.space where plain:
-            return .space
+            return event.isARepeat ? .heldSpace : .space
         case KeyCode.tab where mods.isEmpty:
             return .tab
         case KeyCode.escape:

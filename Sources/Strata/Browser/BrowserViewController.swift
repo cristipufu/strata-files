@@ -317,7 +317,7 @@ final class BrowserViewController: NSViewController {
             guard let self, let node = outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil else { return }
             renameClicked(node.url)
         }
-        ov.onSpace = { [weak self] in _ = self?.handle(.space) }
+        ov.onSpace = { [weak self] key in _ = self?.handle(key) }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
         ov.onDragEnd = { [weak self] in self?.springLoader.cancel() }
     }

@@ -226,7 +226,7 @@ import Quartz
            event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
             if event.charactersIgnoringModifiers == " ",
                (firstResponder as? NSTextView)?.isEditable != true {
-                onClose?()
+                if !event.isARepeat { onClose?() }
                 return
             }
             if event.keyCode == 48, onTab?() == true {

@@ -64,6 +64,42 @@ struct PreviewInteractionTests {
         withExtendedLifetime(environment) {}
     }
 
+    @Test func holdingSpaceKeepsThePreviewOpenInEveryView() async throws {
+        let tree = try TestTree("root/target/inside.md")
+        let environment = try PreviewEnvironment(tree)
+        let before = tree.snapshot()
+        let browser = BrowserViewController(services: environment.services)
+        _ = browser.view
+        browser.load(tree.url("root"))
+        await browser.directoryReads.task?.value
+        let previews = environment.services.previews
+        func space(repeated: Bool) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                          context: nil, characters: " ", charactersIgnoringModifiers: " ",
+                                          isARepeat: repeated, keyCode: KeyCode.space))
+        }
+        for mode in BrowserViewMode.ordered {
+            browser.setMode(mode, remember: false)
+            browser.select([tree.url("root/target")])
+            browser.focusView.keyDown(with: try space(repeated: false))
+            #expect(previews.isOpen, "\(mode)")
+            let panel = try #require(previews.panel, "\(mode)")
+            for _ in 0..<3 {
+                panel.sendEvent(try space(repeated: true))
+                browser.focusView.keyDown(with: try space(repeated: true))
+                #expect(previews.isOpen, "\(mode)")
+            }
+            panel.sendEvent(try space(repeated: false))
+            #expect(!previews.isOpen, "\(mode)")
+            browser.focusView.keyDown(with: try space(repeated: true))
+            #expect(!previews.isOpen, "\(mode)")
+        }
+        #expect(browser.handle(.type("t")) && browser.handle(.heldSpace) && browser.filtering.typed == "t ")
+        #expect(!previews.isOpen)
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
+    }
+
     @Test func resultsKeepTheirLocationAndSpaceStillTypesIntoAnActiveFilter() async throws {
         let tree = try TestTree("root/target/inside.md", "root/target file.md")
         let environment = try PreviewEnvironment(tree)

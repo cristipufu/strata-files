@@ -6,7 +6,7 @@ final class FileOutlineView: NSOutlineView {
     var onBackspace: (() -> Bool)?
     var onEscape: (() -> Bool)?
     var onReturn: (() -> Void)?
-    var onSpace: (() -> Void)?
+    var onSpace: ((FileViewKey) -> Void)?
     var contextMenu: (() -> NSMenu?)?
     /// Tab with no modifiers (switches panes in dual-pane mode); nil keeps the default key-view loop.
     /// Tab; return false to let it move focus to the next control as usual.
@@ -95,7 +95,10 @@ final class FileOutlineView: NSOutlineView {
             onReturn?()
             return
         case .space:
-            onSpace?()
+            onSpace?(.space)
+            return
+        case .heldSpace:
+            onSpace?(.heldSpace)
             return
         case .tab:
             if onTab?() == true { return }

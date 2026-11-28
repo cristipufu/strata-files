@@ -222,6 +222,8 @@ extension BrowserViewController: FileCollectionViewDelegate {
             if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
             if typed.isEmpty { toggleQuickLook(nil) } else { setFilter(typed + " ") }
+        case .heldSpace:
+            if !typed.isEmpty { setFilter(typed + " ") }
         case .tab:
             return onTab?() ?? false
         }
